@@ -1,5 +1,7 @@
 # Ashen Crown
 
+![The Storm King and the Warchief face each other across a cracked marble board](assets/ui/banner.jpg)
+
 A Battle Chess-style game in Qt and QML. Alliance (white, moves first) faces the Horde. The field is black and grey marble. Every capture is a fight, and the fight follows the two pieces on the board. Play a warlord, share one table, or march across the network. Buy me a coffee opens the PayPal page inside the window.
 
 The pictures, music, and sound are original. This is fan-inspired and does not use Blizzard art, names of heroes, or logos.
