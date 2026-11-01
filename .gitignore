@@ -1,0 +1,8 @@
+build/
+build-*/
+dist/
+release/
+third_party/
+*.user
+*.autosave
+aqtinstall.log
