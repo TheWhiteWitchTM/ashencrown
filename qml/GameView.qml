@@ -42,6 +42,35 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
+
+            Rectangle {
+                anchors.fill: parent
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: "#10131c" }
+                    GradientStop { position: 0.55; color: "#07080e" }
+                    GradientStop { position: 1.0; color: "#04050a" }
+                }
+            }
+            Repeater {
+                model: 42
+                Rectangle {
+                    required property int index
+                    property bool wink: index % 5 === 0
+                    width: index % 7 === 0 ? 2.6 : 1.5
+                    height: width
+                    radius: width
+                    color: index % 6 === 0 ? "#e2b657" : "#f4f7ff"
+                    opacity: wink ? 0.55 : (0.16 + (index % 4) * 0.08)
+                    x: (index * 137 + 29) % Math.max(1, parent.width)
+                    y: (index * 89 + 17) % Math.max(1, parent.height)
+                    SequentialAnimation on opacity {
+                        running: wink
+                        loops: Animation.Infinite
+                        NumberAnimation { from: 0.15; to: 0.7; duration: 1600 + (index % 4) * 400; easing.type: Easing.InOutSine }
+                        NumberAnimation { to: 0.15; duration: 1600 + (index % 4) * 400; easing.type: Easing.InOutSine }
+                    }
+                }
+            }
             BoardTable {
                 anchors.fill: parent
                 fontFamily: view.fontFamily

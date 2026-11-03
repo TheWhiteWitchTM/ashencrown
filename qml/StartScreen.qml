@@ -5,6 +5,19 @@ import QtQuick.Layouts
 Item {
     id: screen
     property string fontFamily: "Liberation Serif"
+    property bool greeted: false
+
+    function greet() {
+        if (!visible || greeted || !Game.titleAudio) return
+        greeted = true
+        Game.playSound("drums")
+    }
+
+    Component.onCompleted: greet()
+    onVisibleChanged: {
+        if (!visible) greeted = false
+        else greet()
+    }
 
     Image {
         anchors.fill: parent
@@ -58,15 +71,15 @@ Item {
             anchors.fill: parent
             anchors.leftMargin: 28
             anchors.rightMargin: 28
-            anchors.topMargin: 14
-            anchors.bottomMargin: 14
-            spacing: 4
+            anchors.topMargin: 8
+            anchors.bottomMargin: 8
+            spacing: 2
 
             Text {
                 text: "ASHEN CROWN"
                 color: "#e2b657"
                 font.family: screen.fontFamily
-                font.pixelSize: 40
+                font.pixelSize: 34
                 font.letterSpacing: 4
                 Layout.fillWidth: true
             }
@@ -98,7 +111,7 @@ Item {
                     Rectangle {
                         required property var modelData
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 38
+                        Layout.preferredHeight: 32
                         color: Game.faction === modelData.side ? modelData.tint : "#140e0a"
                         border.color: Game.faction === modelData.side ? "#e2b657" : "#6d5a3a"
                         border.width: 1
@@ -169,8 +182,8 @@ Item {
 
             Item {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 32
-                Layout.topMargin: 4
+                Layout.preferredHeight: 26
+                Layout.topMargin: 1
                 clip: true
                 Accessible.role: Accessible.CheckBox
                 Accessible.name: "White outlines on the pieces"
@@ -215,9 +228,107 @@ Item {
                 }
             }
 
+            Item {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 26
+                clip: true
+                Accessible.role: Accessible.CheckBox
+                Accessible.name: "Title music and clash sounds"
+                Accessible.checked: Game.titleAudio
+                Accessible.onPressAction: Game.titleAudio = !Game.titleAudio
+
+                Rectangle {
+                    id: titleBox
+                    width: 22
+                    height: 22
+                    anchors.verticalCenter: parent.verticalCenter
+                    radius: 2
+                    color: Game.titleAudio ? "#e2b657" : "#140e0a"
+                    border.color: "#f3e6c8"
+                    border.width: 2
+                    Text {
+                        anchors.centerIn: parent
+                        visible: Game.titleAudio
+                        text: "✓"
+                        color: "#140e0a"
+                        font.family: "DejaVu Sans"
+                        font.pixelSize: 16
+                        font.bold: true
+                    }
+                }
+                Text {
+                    x: titleBox.width + 10
+                    width: parent.width - x
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Title music"
+                    color: "#f3e6c8"
+                    font.family: screen.fontFamily
+                    font.pixelSize: 16
+                    elide: Text.ElideRight
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        var next = !Game.titleAudio
+                        Game.titleAudio = next
+                        Game.playSound("click")
+                        if (next) Game.playSound("drums")
+                    }
+                }
+            }
+
+            Item {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 26
+                clip: true
+                Accessible.role: Accessible.CheckBox
+                Accessible.name: "Skip battle scenes"
+                Accessible.checked: !Game.battleScenes
+                Accessible.onPressAction: Game.battleScenes = !Game.battleScenes
+
+                Rectangle {
+                    id: plainBox
+                    width: 22
+                    height: 22
+                    anchors.verticalCenter: parent.verticalCenter
+                    radius: 2
+                    color: Game.battleScenes ? "#140e0a" : "#e2b657"
+                    border.color: "#f3e6c8"
+                    border.width: 2
+                    Text {
+                        anchors.centerIn: parent
+                        visible: !Game.battleScenes
+                        text: "✓"
+                        color: "#140e0a"
+                        font.family: "DejaVu Sans"
+                        font.pixelSize: 16
+                        font.bold: true
+                    }
+                }
+                Text {
+                    x: plainBox.width + 10
+                    width: parent.width - x
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Skip battle scenes"
+                    color: "#f3e6c8"
+                    font.family: screen.fontFamily
+                    font.pixelSize: 16
+                    elide: Text.ElideRight
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        Game.playSound("click")
+                        Game.battleScenes = !Game.battleScenes
+                    }
+                }
+            }
+
             AshButton {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 40
+                Layout.preferredHeight: 32
+                Layout.minimumHeight: 32
+                Layout.maximumHeight: 32
                 Layout.topMargin: 2
                 primary: true
                 label: Game.faction === 0 ? "Battle the Horde" : "Battle the Alliance"
@@ -227,7 +338,9 @@ Item {
 
             AshButton {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 40
+                Layout.preferredHeight: 32
+                Layout.minimumHeight: 32
+                Layout.maximumHeight: 32
                 label: "Two at one table"
                 fontFamily: screen.fontFamily
                 onClicked: Game.startHotseat()
@@ -235,7 +348,9 @@ Item {
 
             AshButton {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 40
+                Layout.preferredHeight: 32
+                Layout.minimumHeight: 32
+                Layout.maximumHeight: 32
                 label: "Across the warfront"
                 fontFamily: screen.fontFamily
                 onClicked: Game.enterLobby(Game.faction)
@@ -243,7 +358,9 @@ Item {
 
             AshButton {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 40
+                Layout.preferredHeight: 32
+                Layout.minimumHeight: 32
+                Layout.maximumHeight: 32
                 label: "Over Bluesky"
                 fontFamily: screen.fontFamily
                 onClicked: Game.enterBsky(Game.faction)
@@ -251,7 +368,9 @@ Item {
 
             AshButton {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 40
+                Layout.preferredHeight: 32
+                Layout.minimumHeight: 32
+                Layout.maximumHeight: 32
                 label: "Buy me a coffee"
                 fontFamily: screen.fontFamily
                 onClicked: Game.openCoffee()
@@ -265,7 +384,8 @@ Item {
                 TextField {
                     id: nameField
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 36
+                    Layout.preferredHeight: 30
+                    Layout.maximumHeight: 30
                     placeholderText: "Your name"
                     color: "#f3e6c8"
                     placeholderTextColor: "#8a7760"
@@ -310,7 +430,8 @@ Item {
                 }
                 Rectangle {
                     Layout.preferredWidth: 72
-                    Layout.preferredHeight: 36
+                    Layout.preferredHeight: 30
+                    Layout.maximumHeight: 30
                     color: "#140e0a"
                     border.color: "#6d5a3a"
                     Text {
@@ -337,5 +458,17 @@ Item {
         reel: true
         visible: screen.visible
         fontFamily: screen.fontFamily
+    }
+
+    Rectangle {
+        anchors.left: menu.right
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.margins: 21
+        color: "transparent"
+        border.color: "#88e2b657"
+        border.width: 1
+        enabled: false
     }
 }

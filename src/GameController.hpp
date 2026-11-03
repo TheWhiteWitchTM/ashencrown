@@ -61,7 +61,9 @@ class GameController : public QObject {
     Q_PROPERTY(int lastTo READ lastTo NOTIFY tick)
     Q_PROPERTY(qreal volume READ volume WRITE setVolume NOTIFY tick)
     Q_PROPERTY(bool musicOn READ musicOn NOTIFY tick)
+    Q_PROPERTY(bool titleAudio READ titleAudio WRITE setTitleAudio NOTIFY tick)
     Q_PROPERTY(bool figureOutline READ figureOutline WRITE setFigureOutline NOTIFY tick)
+    Q_PROPERTY(bool battleScenes READ battleScenes WRITE setBattleScenes NOTIFY tick)
     Q_PROPERTY(QStringList netLines READ netLines NOTIFY tick)
     Q_PROPERTY(QString warcode READ warcode NOTIFY tick)
     Q_PROPERTY(QString endpointLabel READ endpointLabel NOTIFY tick)
@@ -116,7 +118,9 @@ public:
     int lastTo() const { return lastTo_; }
     qreal volume() const { return volume_; }
     bool musicOn() const { return musicOn_; }
+    bool titleAudio() const { return titleAudio_; }
     bool figureOutline() const { return figureOutline_; }
+    bool battleScenes() const { return battleScenes_; }
     QStringList netLines() const { return netLines_; }
     QString warcode() const { return warcode_; }
     QString endpointLabel() const { return endpointLabel_; }
@@ -140,6 +144,8 @@ public:
     void setPlayerName(const QString& name);
     void setVolume(qreal volume);
     void setFigureOutline(bool on);
+    void setTitleAudio(bool on);
+    void setBattleScenes(bool on);
 
     Q_INVOKABLE void startAi(int side, int level);
     Q_INVOKABLE void startHotseat();
@@ -189,6 +195,7 @@ private:
     void refresh();
     void rebuildHints();
     void applyMusicVolume();
+    void applyMusicGate();
     QVariantMap coachMove(const Move& m) const;
     void saveSettings() const;
     void loadSettings();
@@ -261,7 +268,10 @@ private:
     bool roleHost_ = false;
     bool roleLocked_ = false;
     bool musicOn_ = true;
+    bool titleAudio_ = true;
+    bool musicWanted_ = false;
     bool figureOutline_ = false;
+    bool battleScenes_ = true;
     bool coffeeOpen_ = false;
     int promoFrom_ = -1;
     int promoTo_ = -1;

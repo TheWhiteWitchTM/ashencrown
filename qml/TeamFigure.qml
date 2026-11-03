@@ -42,8 +42,8 @@ Item {
         saturation: 0
         opacity: 0.55
         transform: Translate {
-            x: root.width * 0.125 * root.slab
-            y: root.height * 0.155 * root.slab
+            x: root.width * 0.148 * root.slab
+            y: root.height * 0.178 * root.slab
         }
     }
 
@@ -57,8 +57,8 @@ Item {
         saturation: 0.4
         contrast: 0.08
         transform: Translate {
-            x: root.width * 0.092 * root.slab
-            y: root.height * 0.112 * root.slab
+            x: root.width * 0.108 * root.slab
+            y: root.height * 0.130 * root.slab
         }
     }
 
@@ -71,8 +71,8 @@ Item {
         brightness: -0.02
         saturation: 0.2
         transform: Translate {
-            x: root.width * 0.055 * root.slab
-            y: root.height * 0.068 * root.slab
+            x: root.width * 0.066 * root.slab
+            y: root.height * 0.080 * root.slab
         }
     }
 
@@ -86,8 +86,8 @@ Item {
         saturation: 0.15
         opacity: 0.92
         transform: Translate {
-            x: root.width * 0.024 * root.slab
-            y: root.height * 0.03 * root.slab
+            x: root.width * 0.030 * root.slab
+            y: root.height * 0.036 * root.slab
         }
     }
 
@@ -102,8 +102,8 @@ Item {
         saturation: 0.12
         opacity: 0.95
         transform: Translate {
-            x: -root.width * 0.014 * Math.max(0.45, root.depth)
-            y: -root.height * 0.018 * Math.max(0.45, root.depth)
+            x: -root.width * 0.016 * Math.max(0.45, root.depth)
+            y: -root.height * 0.022 * Math.max(0.45, root.depth)
         }
     }
 

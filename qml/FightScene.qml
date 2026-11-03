@@ -10,8 +10,10 @@ Item {
     property bool struck: false
     property bool doomed: false
     property bool feint: false
+    property bool voiced: false
     property bool reel: false
     property int reelIndex: 0
+    readonly property bool hear: !reel || Game.titleAudio
 
     readonly property var reelCards: [
         { as: 0, at: 1, ds: 1, dt: 1 },
@@ -56,6 +58,13 @@ Item {
     readonly property var pose: Duel.makePose(phase, atkType, defType, atkSide, clash.defenderSide || 0)
     readonly property string moveLine: (atkType && defType) ? Duel.moveLine(atkType, defType) : ""
 
+    function openingSound() {
+        if (atkType === 2) return "beast"
+        if (atkType === 4) return "siege"
+        if (atkType === 3 || atkType === 5) return atkSide === 0 ? "holy" : "magic"
+        return "melee"
+    }
+
     function closeFight() {
         if (closed || !Game.fightActive) return
         closed = true
@@ -71,6 +80,7 @@ Item {
             struck = false
             doomed = false
             feint = false
+            voiced = false
             phase = 0
             if (!reel) Game.setMusicBed(0.32)
             clock.start()
@@ -92,26 +102,40 @@ Item {
             phase = Math.min(200, phase + 0.62)
             var hitAt = Duel.strikeAt(scene.atkType, scene.defType)
             var fallAt = Duel.deathAt(scene.atkType, scene.defType)
-            if (!scene.reel && !feint && phase >= 56 && (scene.atkType === 1 || scene.atkType === 6)) {
+            if (scene.reel && !voiced && phase >= 10) {
+                voiced = true
+                if (Game.titleAudio) Game.playSound(scene.openingSound())
+            }
+            if (scene.hear && !feint && phase >= 36 && scene.atkType === 2) {
+                feint = true
+                Game.playSound("beast")
+            }
+            if (scene.hear && !feint && phase >= 34 && (scene.atkType === 3 || scene.atkType === 5)) {
+                feint = true
+                Game.playSound(scene.atkSide === 0 ? "holy" : "magic")
+            }
+            if (scene.hear && !feint && phase >= 56 && (scene.atkType === 1 || scene.atkType === 6)) {
                 feint = true
                 Game.playSound("melee")
             }
-            if (!scene.reel && !feint && phase >= 80 && scene.atkType === 4) {
+            if (scene.hear && !feint && phase >= 80 && scene.atkType === 4) {
                 feint = true
                 Game.playSound("siege")
             }
             if (phase >= hitAt && !struck) {
                 struck = true
-                if (!scene.reel) {
-                    Game.playSound("hit")
-                    Game.setMusicBed(0.16)
-                }
+                if (scene.hear) Game.playSound("hit")
+                if (!scene.reel) Game.setMusicBed(0.16)
             }
-            if (!scene.reel && !doomed && phase >= fallAt + 8) {
+            if (!doomed && phase >= fallAt + 8) {
                 doomed = true
-                Game.setMusicBed(0.08)
-                Game.playSound("sting")
-                Game.playSound(Duel.deathSound(scene.defType))
+                if (!scene.reel) {
+                    Game.setMusicBed(0.08)
+                    Game.playSound("sting")
+                    Game.playSound(Duel.deathSound(scene.defType))
+                } else if (Game.titleAudio) {
+                    Game.playSound(Duel.deathSound(scene.defType))
+                }
             }
             if (phase >= 200) {
                 if (scene.reel) {
@@ -120,6 +144,7 @@ Item {
                     struck = false
                     doomed = false
                     feint = false
+                    voiced = false
                 } else {
                     scene.closeFight()
                 }
@@ -134,8 +159,23 @@ Item {
     Rectangle {
         anchors.fill: parent
         gradient: Gradient {
-            GradientStop { position: 0.0; color: "#12141c" }
-            GradientStop { position: 1.0; color: "#05060a" }
+            GradientStop { position: 0.0; color: "#10141e" }
+            GradientStop { position: 0.55; color: "#080a12" }
+            GradientStop { position: 1.0; color: "#03040a" }
+        }
+    }
+
+    Repeater {
+        model: 36
+        Rectangle {
+            required property int index
+            width: index % 7 === 0 ? 2.4 : 1.4
+            height: width
+            radius: width
+            color: index % 6 === 0 ? "#e2b657" : "#f4f7ff"
+            opacity: 0.14 + (index % 5) * 0.07
+            x: (index * 149 + 31) % Math.max(1, parent.width)
+            y: (index * 97 + 19) % Math.max(1, parent.height)
         }
     }
 
@@ -264,14 +304,14 @@ Item {
                 Scale {
                     origin.x: stage.width / 2
                     origin.y: stage.height * 0.62
-                    xScale: 1 + scene.pose.flash * 0.04
-                    yScale: 1 + scene.pose.flash * 0.04
+                    xScale: 1 + scene.pose.flash * 0.07
+                    yScale: 1 + scene.pose.flash * 0.07
                 }
             ]
 
             Rectangle {
-                x: attacker.stand ? attacker.stand.footX - width / 2 : 0
-                y: attacker.stand ? attacker.stand.footY - height * 0.32 : 0
+                x: attacker.stand ? attacker.stand.footX - width / 2 + attacker.width * 0.06 : 0
+                y: attacker.stand ? attacker.stand.footY - height * 0.18 : 0
                 width: attacker.stand ? attacker.stand.shadeW * 0.5 * attacker.stand.shadow : 0
                 height: Math.max(8, width * 0.28)
                 radius: height / 2
@@ -288,8 +328,8 @@ Item {
                 opacity: (0.5 + 0.22 * Math.abs(Math.sin(scene.phase * 0.16))) * scene.pose.ao
             }
             Rectangle {
-                x: defender.stand ? defender.stand.footX - width / 2 : 0
-                y: defender.stand ? defender.stand.footY - height * 0.32 : 0
+                x: defender.stand ? defender.stand.footX - width / 2 + defender.width * 0.06 : 0
+                y: defender.stand ? defender.stand.footY - height * 0.18 : 0
                 width: defender.stand ? defender.stand.shadeW * 0.5 * defender.stand.shadow : 0
                 height: Math.max(8, width * 0.28)
                 radius: height / 2
@@ -358,7 +398,7 @@ Item {
             TeamFigure {
                 id: attacker
                 property var stand: mesh.view3d
-                    ? Board.actorStand(mesh.view3d, scene.pose.ax, scene.pose.ay, scene.atkType, scene.atkSide, 1, 0.12)
+                    ? Board.actorStand(mesh.view3d, scene.pose.ax, scene.pose.ay, scene.atkType, scene.atkSide, 1.06, 0.12)
                     : null
                 x: stand ? stand.x : 0
                 y: stand ? stand.y : 0
@@ -366,7 +406,7 @@ Item {
                 height: stand ? stand.h : 1
                 source: clash.attackerUrl || ""
                 side: scene.atkSide
-                depth: 1.08 + (stand ? stand.rise * 2.4 : 0)
+                depth: 1.22 + (stand ? stand.rise * 2.6 : 0)
                 opacity: scene.pose.ao
                 transformOrigin: Item.Bottom
                 transform: [
@@ -400,7 +440,7 @@ Item {
             TeamFigure {
                 id: defender
                 property var stand: mesh.view3d
-                    ? Board.actorStand(mesh.view3d, scene.pose.dx, scene.pose.dy, scene.defType, court.defSide, 1, 0.88)
+                    ? Board.actorStand(mesh.view3d, scene.pose.dx, scene.pose.dy, scene.defType, court.defSide, 1.06, 0.88)
                     : null
                 x: stand ? stand.x : 0
                 y: stand ? stand.y : 0
@@ -409,7 +449,7 @@ Item {
                 source: clash.defenderUrl || ""
                 side: court.defSide
                 mirror: true
-                depth: 1.08 + (stand ? stand.rise * 2.4 : 0)
+                depth: 1.22 + (stand ? stand.rise * 2.6 : 0)
                 opacity: scene.pose.dop
                 transformOrigin: Item.Bottom
                 transform: [
@@ -515,6 +555,37 @@ Item {
                 y: y1 + (y2 - y1) * scene.pose.bolt - height / 2
             }
 
+            Repeater {
+                model: scene.pose.boltOn ? 8 : 0
+                Rectangle {
+                    required property int index
+                    property real ang: scene.phase * 0.09 + index * 0.785
+                    property real rad: attacker.width * (0.52 + 0.08 * Math.sin(scene.phase * 0.12 + index))
+                    width: 6
+                    height: 6
+                    radius: 3
+                    color: index % 2 === 0 ? scene.pose.tint : "#fff6ea"
+                    opacity: 0.8 * scene.pose.ao
+                    x: attacker.x + attacker.width * 0.5 + Math.cos(ang) * rad - width / 2
+                    y: attacker.y + attacker.height * 0.4 + Math.sin(ang) * rad * 0.42 - height / 2
+                }
+            }
+
+            Repeater {
+                model: scene.pose.hoof > 0.08 && attacker.stand ? 4 : 0
+                Rectangle {
+                    required property int index
+                    property real puff: (index * 0.23 + scene.phase * 0.04) % 1
+                    width: attacker.stand.shadeW * (0.22 + puff * 0.32)
+                    height: width * 0.32
+                    radius: height / 2
+                    color: index % 2 === 0 ? "#d9d0c4" : "#8d8680"
+                    opacity: scene.pose.hoof * (1 - puff) * 0.6
+                    x: attacker.stand.footX - width / 2 - puff * attacker.width * 0.42
+                    y: attacker.stand.footY - height * 0.45 - puff * 14
+                }
+            }
+
             Rectangle {
                 id: lance
                 visible: scene.pose.lance > 0.12
@@ -589,8 +660,23 @@ Item {
                 border.width: 2
                 x: x1 + (x2 - x1) * scene.pose.cannon - width / 2
                 y: y1 + (y2 - y1) * scene.pose.cannon
-                    - Math.sin(scene.pose.cannon * Math.PI) * stage.height * 0.08
+                    - Math.sin(scene.pose.cannon * Math.PI) * stage.height * 0.1
                     - height / 2
+            }
+            Repeater {
+                model: (scene.pose.muzzle > 0.05 || (scene.pose.cannon > 0.02 && scene.pose.cannon < 0.98)) ? 5 : 0
+                Rectangle {
+                    required property int index
+                    property real age: Math.max(scene.pose.muzzle, scene.pose.cannon) - index * 0.14
+                    visible: age > 0
+                    width: 16 + Math.max(0, age) * 42
+                    height: width * 0.66
+                    radius: height / 2
+                    color: "#c9c3b8"
+                    opacity: Math.max(0, 0.38 - age * 0.28)
+                    x: attacker.x + attacker.width * 0.78 - width / 2 + age * 18
+                    y: attacker.y + attacker.height * 0.34 - height / 2 - age * 36
+                }
             }
 
             Image {
@@ -614,6 +700,17 @@ Item {
                 source: scene.pose.fx
                 fillMode: Image.PreserveAspectFit
                 opacity: Math.max(scene.pose.slash, scene.pose.lance) * 0.92
+            }
+            Image {
+                visible: scene.pose.slash > 0.4
+                x: attacker.x + attacker.width * 0.42
+                y: attacker.y - attacker.height * 0.02
+                width: stage.width * 0.2
+                height: width
+                source: "qrc:/assets/fx/slash.png"
+                fillMode: Image.PreserveAspectFit
+                opacity: scene.pose.slash * 0.72
+                rotation: -32 + scene.pose.ar * 0.35
             }
 
             Rectangle {
@@ -682,7 +779,7 @@ Item {
                 antialiasing: true
             }
             Repeater {
-                model: 8
+                model: 12
                 Rectangle {
                     required property int index
                     visible: scene.pose.flash > 0.03

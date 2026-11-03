@@ -67,23 +67,26 @@ function pieceAspect(side, type) {
     return row[type] || 0.54
 }
 
-function makeView(vw, vh, files, ranks, padTop, padBot) {
+function makeView(vw, vh, files, ranks, padTop, padBot, elevDeg) {
     if (vw < 40 || vh < 40) return null
     files = files || 8
     ranks = ranks || 8
     padTop = padTop === undefined ? 0.11 : padTop
     padBot = padBot === undefined ? 0.035 : padBot
+    // Degrees up from the table. Lower is more tilt. The arena stays at 48
+    // so the fighters fill the frame. The main board passes 38.
+    if (elevDeg === undefined || elevDeg === null) elevDeg = 48
 
     var cx = files * 0.5
     var lookZ = ranks * 0.45
-    // Frontal and about 48 degrees up. The far rank stays close to the
-    // near rank in size: the Battle Chess board, not a low corner camera.
-    var elev = 48 * Math.PI / 180
+    var elev = elevDeg * Math.PI / 180
+    var yaw = 5 * Math.PI / 180
     var dist = Math.max(files, ranks) * 2.55 + (ranks <= 4 ? 7.5 : 9.5)
+    var horiz = dist * Math.cos(elev)
     var eye = {
-        x: cx,
+        x: cx + horiz * Math.sin(yaw),
         y: 0.08 + dist * Math.sin(elev),
-        z: lookZ + dist * Math.cos(elev)
+        z: lookZ + horiz * Math.cos(yaw)
     }
     var look = { x: cx, y: 0.06, z: lookZ }
     var forward = norm(sub(look, eye))
@@ -91,10 +94,10 @@ function makeView(vw, vh, files, ranks, padTop, padBot) {
     var up = norm(cross(right, forward))
 
     var shortBoard = ranks <= 4
-    var margin = shortBoard ? 0.28 : Math.min(files, ranks) * 0.045 + 0.28
-    var base = margin + (shortBoard ? 0.16 : 0.22)
-    var thick = shortBoard ? 0.16 : 0.2
-    var step = shortBoard ? 0.1 : 0.12
+    var margin = shortBoard ? 0.32 : Math.min(files, ranks) * 0.05 + 0.32
+    var base = margin + (shortBoard ? 0.2 : 0.28)
+    var thick = shortBoard ? 0.24 : 0.36
+    var step = shortBoard ? 0.14 : 0.18
     var view = {
         eye: eye, forward: forward, right: right, up: up,
         files: files, ranks: ranks,
@@ -308,9 +311,9 @@ function shadowBox(view) {
         if (pts[i].y < minY) minY = pts[i].y
         if (pts[i].y > maxY) maxY = pts[i].y
     }
-    var w = (maxX - minX) * 1.06
-    var h = Math.max(36, (maxY - minY) * 0.34)
-    return { x: (minX + maxX) / 2 - w / 2, y: maxY - h * 0.55, w: w, h: h }
+    var w = (maxX - minX) * 1.14
+    var h = Math.max(42, (maxY - minY) * 0.46)
+    return { x: (minX + maxX) / 2 - w / 2 + w * 0.02, y: maxY - h * 0.22, w: w, h: h }
 }
 
 function visualOf(sq, flipped) {
@@ -356,8 +359,10 @@ function piecePose(view, fromSq, toSq, t, flipped, side, type, selected, breathe
             }
         }
     }
+    var idleWave = Math.sin((breatheN + type * 0.17) * Math.PI * 2)
     var hop = hopWave * profile.hop
     if (selected && !moving) hop += 0.2 + 0.12 * breatheN
+    else if (!moving) hop += 0.035 * (0.5 + 0.5 * idleWave)
     var col = a.col + (b.col - a.col) * (moving ? (travel < 0.14 ? 0 : u) : 0)
     var row = a.row + (b.row - a.row) * (moving ? (travel < 0.14 ? 0 : u) : 0)
     var ground = project(view, col + 0.5, 0, row + 0.66)
@@ -380,6 +385,8 @@ function piecePose(view, fromSq, toSq, t, flipped, side, type, selected, breathe
         if (type === 2) lean += dir * 7 * (1 - u)
     } else if (selected) {
         lean = (breatheN - 0.5) * 6
+    } else {
+        lean = idleWave * 1.6
     }
     var squashX = 1
     var squashY = 1
@@ -393,6 +400,9 @@ function piecePose(view, fromSq, toSq, t, flipped, side, type, selected, breathe
     } else if (selected && !moving) {
         squashX = 1 - 0.025 * breatheN
         squashY = 1 + 0.045 * breatheN
+    } else if (!moving) {
+        squashX = 1 - 0.012 * idleWave
+        squashY = 1 + 0.02 * idleWave
     }
     var dust = 0
     var trail = 0

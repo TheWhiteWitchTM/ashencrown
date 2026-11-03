@@ -58,7 +58,7 @@ function base() {
         shake: 0,
         boltOn: false, bolt: 0,
         slash: 0, dslash: 0, lance: 0, ring: 0, dust: 0, flash: 0,
-        cannon: 0, muzzle: 0,
+        cannon: 0, muzzle: 0, hoof: 0,
         tint: "#f4f6fb",
         ringTint: "#f4f6fb",
         fx: "qrc:/assets/fx/slash.png"
@@ -119,45 +119,48 @@ function bob(type, phase) {
 function kill(p, dt, t) {
     var e = smooth(t)
     if (dt === 1) {
-        p.dr = 78 * e
-        p.dx += 0.08 * e
-        p.dy = 22 * e
+        p.dr = 96 * e
+        p.dx += 0.11 * e
+        p.dy = 30 * e
     } else if (dt === 2) {
-        p.dr = 130 * e
-        p.dx += 0.16 * e
-        p.dy = -40 * Math.sin(e * Math.PI)
+        p.dr = 156 * e
+        p.dx += 0.2 * e
+        p.dy = -56 * Math.sin(e * Math.PI)
     } else if (dt === 3) {
         p.dop = 1 - e
-        p.dy = -32 * e
-        p.dr = -18 * e
+        p.dy = -46 * e
+        p.dr = -26 * e
+        p.dscale = 1 - 0.12 * e
     } else if (dt === 4) {
-        p.dscale = 1 - 0.46 * e
-        p.dy = 36 * e
-        p.dust = Math.max(p.dust, 0.9)
-        p.dr = 6 * e
+        p.dscale = 1 - 0.58 * e
+        p.dy = 48 * e
+        p.dust = Math.max(p.dust, 1)
+        p.dr = 10 * e
     } else if (dt === 5) {
-        p.dr = -40 * e
+        p.dr = -56 * e
         p.dop = 1 - e
-        p.dy -= 20 * e
+        p.dy -= 34 * e
+        p.dscale = 1 - 0.08 * e
     } else {
-        if (e < 0.42) {
-            p.dy = 26 * (e / 0.42)
-            p.dr = 16
+        if (e < 0.38) {
+            p.dy = 34 * (e / 0.38)
+            p.dr = 18
         } else {
-            var u = (e - 0.42) / 0.58
-            p.dy = 26
-            p.dr = 16 + 74 * u
-            p.dx += 0.05 * u
+            var u = (e - 0.38) / 0.62
+            p.dy = 34
+            p.dr = 18 + 86 * u
+            p.dx += 0.07 * u
         }
     }
 }
 
 function victory(p, at, phase) {
     if (phase < 160) return
-    if (at === 2) p.ay -= 12
-    else if (at === 3 || at === 5) p.ay -= 10
-    else if (at === 4) p.ascale = Math.max(p.ascale, 1.04)
-    else if (at === 6) p.ar = Math.min(p.ar, -6)
+    if (at === 2) p.ay -= 20
+    else if (at === 3 || at === 5) p.ay -= 16
+    else if (at === 4) p.ascale = Math.max(p.ascale, 1.06)
+    else if (at === 6) p.ar = Math.min(p.ar, -12)
+    else p.ay -= 6
 }
 
 function swing(phase, a, b) {
@@ -167,22 +170,23 @@ function swing(phase, a, b) {
 
 function swordplay(p, phase) {
     var e = smooth(clamp01(phase / 26))
-    p.ax = lerp(0.14, 0.32, e)
-    p.dx = lerp(0.86, 0.68, e)
-    p.ay = Math.sin(phase * 0.55) * 3
-    p.dy = Math.sin(phase * 0.55 + 1) * 3
+    p.ax = lerp(0.12, 0.30, e)
+    p.dx = lerp(0.88, 0.70, e)
+    p.ay = Math.sin(phase * 0.55) * 4
+    p.dy = Math.sin(phase * 0.55 + 1) * 4
 
     var high = swing(phase, 30, 48)
     var parry = swing(phase, 52, 70)
     var low = swing(phase, 78, 98)
     var bind = swing(phase, 104, 128)
-    p.ar = -24 * high + 8 * parry - 16 * low - 8 * bind
-    p.dr = 16 * high - 20 * parry + 10 * low + 12 * bind
+    p.ar = -36 * high + 12 * parry - 24 * low - 12 * bind
+    p.dr = 22 * high - 28 * parry + 14 * low + 16 * bind
     p.slash = Math.max(high, low * 0.9)
     p.dslash = Math.max(parry, bind * 0.7)
-    p.ax += 0.03 * high - 0.025 * parry + 0.02 * low
-    p.dx -= 0.02 * parry
-    if (low > 0) p.dy = -8 * low
+    p.ax += 0.04 * high - 0.03 * parry + 0.03 * low
+    p.dx -= 0.03 * parry
+    if (high > 0) p.ay = -12 * high
+    if (low > 0) p.dy = -12 * low
     if (bind > 0) {
         p.ax = lerp(p.ax, 0.36, bind)
         p.dx = lerp(p.dx, 0.64, bind)
@@ -190,15 +194,16 @@ function swordplay(p, phase) {
 
     if (phase > 136 && phase < 156) {
         var lunge = smooth((phase - 136) / 16)
-        p.ax = lerp(0.34, 0.40, lunge)
-        p.ar = -22
+        p.ax = lerp(0.32, 0.46, lunge)
+        p.ar = -32
+        p.ay = -8 * (1 - lunge)
         p.slash = 1
         p.dslash = 0
     }
     if (phase > 150) {
         var t = smooth(clamp01((phase - 150) / 36))
-        p.ax = 0.40
-        p.ar = -18
+        p.ax = 0.46
+        p.ar = -24
         kill(p, 1, t)
         if (phase < 168) p.slash = 1
     }
@@ -206,19 +211,20 @@ function swordplay(p, phase) {
 
 function pawnPress(p, phase, dt) {
     var e = smooth(clamp01(phase / 28))
-    p.ax = lerp(0.14, 0.34, e)
-    p.dx = lerp(0.86, dt === 4 ? 0.74 : 0.66, e * (dt === 2 ? 0.85 : 0.55))
-    p.ay = Math.sin(phase * 0.6) * 4
+    p.ax = lerp(0.12, 0.36, e)
+    p.dx = lerp(0.88, dt === 4 ? 0.72 : 0.64, e * (dt === 2 ? 0.85 : 0.55))
+    p.ay = Math.sin(phase * 0.6) * 5
     if (phase < 120) p.dy = bob(dt, phase)
 
     var cut = swing(phase, 32, 52)
     var answer = swing(phase, 58, 78)
     var second = swing(phase, 86, 112)
-    p.ar = -20 * cut - 18 * second + 6 * answer
-    p.dr = 12 * cut - 14 * answer
+    p.ar = -30 * cut - 26 * second + 8 * answer
+    p.dr = 18 * cut - 20 * answer
     p.slash = Math.max(cut, second)
     p.dslash = answer
-    p.ax += 0.03 * second
+    p.ax += 0.045 * second
+    if (cut > 0) p.ay = -8 * cut
     if (dt === 3 || dt === 5) p.ring = Math.max(p.ring, answer * 0.6)
     if (dt === 4) p.dscale = 1 + 0.05 * e
 
@@ -228,9 +234,10 @@ function pawnPress(p, phase, dt) {
 function lanceCharge(p, phase, dt) {
     var wind = smooth(clamp01(phase / 28))
     p.lance = lerp(0.35, 0.7, wind)
-    p.ar = -8 * wind
-    p.ax = lerp(0.06, 0.12, wind)
-    p.ay = Math.sin(phase * 0.8) * 6 * wind
+    p.ar = -10 * wind
+    p.ax = lerp(0.04, 0.1, wind)
+    p.ay = Math.sin(phase * 0.8) * 10 * wind
+    p.hoof = 0.35 * wind
     if (dt === 2) {
         p.dx = lerp(0.94, 0.78, wind)
         p.dr = 8 * wind
@@ -246,23 +253,25 @@ function lanceCharge(p, phase, dt) {
         var t = smooth((phase - 32) / 86)
         var accel = t * t
         var meet = dt === 2 ? 0.36 : 0.40
-        p.ax = lerp(0.12, meet, accel)
-        p.ay = Math.sin(phase * 1.15) * (10 + 10 * t)
+        p.ax = lerp(0.1, meet, accel)
+        p.ay = Math.sin(phase * 1.15) * (16 + 18 * t)
         p.lance = lerp(0.72, 1, t)
-        p.ar = -7
+        p.ar = -8
+        p.hoof = 0.55 + 0.45 * t
         if (dt === 2) {
-            p.dx = lerp(0.88, 0.62, accel)
-            p.dy = Math.sin(phase * 1.15 + 0.5) * (10 + 8 * t)
-            p.dr = 8
+            p.dx = lerp(0.9, 0.58, accel)
+            p.dy = Math.sin(phase * 1.15 + 0.5) * (14 + 12 * t)
+            p.dr = 10
         }
-        p.dust = t * 0.35
+        p.dust = t * 0.45
     }
 
     if (phase > 112 && phase < 132) {
         var hit = Math.sin((phase - 112) / 20 * Math.PI)
-        p.shake = 14 * hit
+        p.shake = 20 * hit
         p.slash = hit
         p.lance = 1
+        p.hoof = Math.max(p.hoof, hit)
         p.dust = Math.max(p.dust, hit)
     }
     if (phase > 124) {
@@ -290,11 +299,11 @@ function cannonShot(p, phase, dt) {
     }
     if (phase > 74 && phase < 96) {
         var kick = Math.sin((phase - 74) / 22 * Math.PI)
-        p.ax = lerp(0.36, 0.26, kick)
-        p.ar = -6 * kick
+        p.ax = lerp(0.36, 0.2, kick)
+        p.ar = -8 * kick
         p.muzzle = kick
-        p.shake = 7 * kick
-        p.dust = 0.4 * kick
+        p.shake = 12 * kick
+        p.dust = 0.55 * kick
     }
     if (phase >= 78) p.cannon = clamp01((phase - 78) / 54)
     if (dt === 3 || dt === 5) p.ring = clamp01((phase - 40) / 30) * (phase < 132 ? 0.7 : 0)
@@ -303,7 +312,7 @@ function cannonShot(p, phase, dt) {
         p.ax = 0.32
         p.muzzle = 0
         p.cannon = 0
-        p.shake = Math.max(p.shake, 8 * (1 - clamp01((phase - 132) / 20)))
+        p.shake = Math.max(p.shake, 14 * (1 - clamp01((phase - 132) / 20)))
         kill(p, dt, clamp01((phase - 132) / 44))
     }
 }
@@ -312,7 +321,7 @@ function spell(p, phase, at, dt) {
     var rise = smooth(clamp01(phase / 28))
     p.ax = 0.22
     p.dx = dt === 4 ? 0.72 : 0.76
-    p.ay = lerp(0, at === 5 ? -18 : -12, rise) + Math.sin(phase * 0.28) * 4
+    p.ay = lerp(0, at === 5 ? -28 : -18, rise) + Math.sin(phase * 0.28) * 5
     p.dy = bob(dt, phase)
     if (dt === 3 || dt === 5) p.dy = lerp(0, -14, rise) + Math.sin(phase * 0.28 + 1) * 4
     p.ring = rise * 0.45
@@ -324,7 +333,7 @@ function spell(p, phase, at, dt) {
     }
     if (phase > 78 && phase < 120) {
         var lock = Math.sin((phase - 78) / 42 * Math.PI)
-        p.shake = 6 * lock
+        p.shake = 10 * lock
         p.bolt = 0.72 + 0.28 * lock
         if (dt === 3 || dt === 5 || dt === 6) {
             p.dr = 8 * lock
@@ -355,8 +364,8 @@ function royal(p, phase, dt) {
     var cut = swing(phase, 34, 54)
     var answer = swing(phase, 60, 82)
     var slip = swing(phase, 88, 114)
-    p.ar = -18 * cut + 4 * answer
-    p.dr = 12 * answer - 8 * cut
+    p.ar = -28 * cut + 6 * answer
+    p.dr = 16 * answer - 12 * cut
     p.slash = cut
     p.dslash = answer * 0.85
     if (slip > 0) {
@@ -366,14 +375,15 @@ function royal(p, phase, dt) {
 
     if (phase > 118 && phase < 148) {
         var end = smooth((phase - 118) / 22)
-        p.ax = lerp(0.24, 0.40, end)
-        p.ar = -18
+        p.ax = lerp(0.22, 0.44, end)
+        p.ar = -26
+        p.ay = -6 * (1 - end)
         p.slash = end
         p.dslash = 0
     }
     if (phase > 148) {
-        p.ax = 0.40
-        p.ar = -14
+        p.ax = 0.44
+        p.ar = -18
         kill(p, dt, clamp01((phase - 148) / 38))
     }
 }
@@ -402,6 +412,7 @@ function makePose(phase, at, dt, aside, dside) {
         p.slash *= fade
         p.dslash *= fade
         p.muzzle *= fade
+        p.hoof *= fade
         if (phase > hit + 28) {
             p.boltOn = false
             p.cannon = 0
@@ -409,9 +420,10 @@ function makePose(phase, at, dt, aside, dside) {
     }
     if (phase >= hit && phase < hit + 12) {
         var k = 1 - (phase - hit) / 12
-        p.flash = 0.36 * k
-        if (p.shake < 6) p.shake = 14 * k
-        p.dust = Math.max(p.dust, 0.8 * k)
+        p.flash = 0.52 * k
+        if (p.shake < 8) p.shake = 18 * k
+        p.dust = Math.max(p.dust, 0.95 * k)
+        if (at !== 3 && at !== 5) p.ay -= 8 * k
     }
     return p
 }

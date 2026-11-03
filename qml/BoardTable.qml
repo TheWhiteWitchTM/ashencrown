@@ -8,12 +8,6 @@ Item {
     readonly property var kind: ["", "pawn", "knight", "bishop", "rook", "queen", "king"]
     readonly property var nearCamp: Board.camp(Board.nearSide(Game.flipped))
     readonly property var farCamp: Board.camp(Board.farSide(Game.flipped))
-    readonly property real labelPx: {
-        if (!mesh.view3d) return 14
-        var a = Board.project(mesh.view3d, 3, 0, 7.6)
-        var b = Board.project(mesh.view3d, 4, 0, 7.6)
-        return Math.max(12, Math.min(22, Math.hypot(b.x - a.x, b.y - a.y) * 0.2))
-    }
 
     property bool glideOn: false
     property real glideT: 0
@@ -29,6 +23,7 @@ Item {
     property int rookSide: 0
     property int rookType: 0
     property real sway: 0
+    property real idle: 0
     property int hoverSq: -1
     property int aimSq: -1
     property int gazeSq: -1
@@ -213,6 +208,14 @@ Item {
         onFinished: table.rookOn = false
     }
 
+    NumberAnimation on idle {
+        running: Game.screen === 2
+        from: 0
+        to: 1
+        duration: 3400
+        loops: Animation.Infinite
+    }
+
     SequentialAnimation {
         running: Game.selected >= 0 && !table.glideOn
         loops: Animation.Infinite
@@ -235,12 +238,14 @@ Item {
 
     Rectangle {
         z: 0
-        anchors.centerIn: parent
-        width: parent.width * 0.92
-        height: parent.height * 0.62
-        radius: width / 2
-        color: "#c47a32"
-        opacity: 0.16
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.verticalCenter: parent.verticalCenter
+        anchors.verticalCenterOffset: parent.height * 0.12
+        width: parent.width * 0.7
+        height: parent.height * 0.16
+        radius: height / 2
+        color: "#9eb6d8"
+        opacity: 0.06
     }
 
     SlabMesh {
@@ -250,6 +255,7 @@ Item {
         ranks: 8
         padTop: 0.12
         padBottom: 0.04
+        elev: 38
         frontColor: table.nearCamp.face
         frontDeep: table.nearCamp.deep
         lipFront: table.nearCamp.lip
@@ -507,8 +513,8 @@ Item {
         z: pose ? pose.z : 0
 
         Rectangle {
-            x: walker.step.footX - walker.x - width / 2
-            y: walker.step.footY - walker.y - height * 0.35
+            x: walker.step.footX - walker.x - width / 2 + walker.width * 0.07
+            y: walker.step.footY - walker.y - height * 0.22
             width: walker.step.w * 0.92 * walker.step.shadow
             height: Math.max(8, width * 0.3)
             radius: height / 2
@@ -579,7 +585,7 @@ Item {
                 opacity: (0.26 - index * 0.06) * walker.step.trail
                 source: table.pieceSource(walker.side, walker.type)
                 side: walker.side
-                depth: 0.4
+                depth: 0.48
             }
         }
         TeamFigure {
@@ -587,7 +593,7 @@ Item {
             source: table.pieceSource(walker.side, walker.type)
             side: walker.side
             outline: Game.figureOutline
-            depth: 1 + walker.step.hop * 0.85
+            depth: 1.12 + walker.step.hop * 0.95
             transform: [
                 Scale {
                     origin.x: walker.width / 2
@@ -613,7 +619,7 @@ Item {
             property var pc: Game.squares[index]
             property bool live: pc && pc.type > 0 && !table.hiddenSq(index)
             property var pose: (live && mesh.view3d)
-                ? Board.piecePose(mesh.view3d, index, index, 0, Game.flipped, pc.side, pc.type, index === Game.selected, table.sway)
+                ? Board.piecePose(mesh.view3d, index, index, 0, Game.flipped, pc.side, pc.type, index === Game.selected, index === Game.selected ? table.sway : table.idle)
                 : null
             visible: pose !== null
             x: pose ? pose.x : 0
@@ -623,8 +629,8 @@ Item {
             z: pose ? pose.z : 0
 
             Rectangle {
-                x: man.pose ? man.pose.footX - man.x - width / 2 : 0
-                y: man.pose ? man.pose.footY - man.y - height * 0.32 : 0
+                x: man.pose ? man.pose.footX - man.x - width / 2 + man.width * 0.07 : 0
+                y: man.pose ? man.pose.footY - man.y - height * 0.2 : 0
                 width: man.width * 0.9 * (man.pose ? man.pose.shadow : 1)
                 height: Math.max(7, width * 0.28)
                 radius: height / 2
@@ -654,7 +660,7 @@ Item {
                 source: man.live ? table.pieceSource(man.pc.side, man.pc.type) : ""
                 side: man.pc ? man.pc.side : 0
                 outline: Game.figureOutline
-                depth: 1.15 + (man.pose ? man.pose.hop * 0.9 : 0)
+                depth: 1.28 + (man.pose ? man.pose.hop * 0.95 : 0)
                 transform: [
                     Scale {
                         origin.x: man.width / 2
@@ -689,25 +695,6 @@ Item {
         type: table.rookType
     }
 
-    Repeater {
-        model: 8
-        Text {
-            required property int index
-            property var spot: mesh.view3d
-                ? Board.project(mesh.view3d, index + 0.5, -mesh.view3d.thick * 0.55, mesh.view3d.ranks + mesh.view3d.margin * 0.35)
-                : null
-            visible: spot !== null
-            x: spot ? spot.x - width / 2 : 0
-            y: spot ? spot.y - height / 2 : 0
-            z: 40
-            text: String.fromCharCode(97 + (Game.flipped ? (7 - index) : index))
-            color: "#f6efe2"
-            font.pixelSize: table.labelPx
-            font.family: "DejaVu Sans Mono"
-            style: Text.Outline
-            styleColor: "#140e0c"
-        }
-    }
     Rectangle {
         visible: table.coachLine !== ""
         z: 950

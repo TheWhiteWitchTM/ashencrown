@@ -328,6 +328,13 @@ void GameController::setFigureOutline(bool on) {
     refresh();
 }
 
+void GameController::setBattleScenes(bool on) {
+    if (battleScenes_ == on) return;
+    battleScenes_ = on;
+    saveSettings();
+    refresh();
+}
+
 void GameController::loadSettings() {
     QSettings s;
     const QByteArray user = qgetenv("USER");
@@ -336,7 +343,9 @@ void GameController::loadSettings() {
     if (playerName_.isEmpty()) playerName_ = fallback;
     volume_ = std::clamp(s.value("volume", 0.85).toDouble(), 0.0, 1.0);
     musicOn_ = s.value("music", true).toBool();
+    titleAudio_ = s.value("titleAudio", true).toBool();
     figureOutline_ = s.value("outline", false).toBool();
+    battleScenes_ = s.value("battleScenes", true).toBool();
     hostSide_ = s.value("faction", 0).toInt() & 1;
     level_ = std::clamp(s.value("level", 1).toInt(), 0, 3);
 }
@@ -346,7 +355,9 @@ void GameController::saveSettings() const {
     s.setValue("name", playerName_);
     s.setValue("volume", volume_);
     s.setValue("music", musicOn_);
+    s.setValue("titleAudio", titleAudio_);
     s.setValue("outline", figureOutline_);
+    s.setValue("battleScenes", battleScenes_);
     s.setValue("faction", hostSide_);
     s.setValue("level", level_);
 }
@@ -368,7 +379,25 @@ void GameController::initAudio() {
     music_->setSource(QUrl("qrc:/assets/sounds/music.wav"));
     music_->setLoops(QMediaPlayer::Infinite);
     applyMusicVolume();
-    if (musicOn_) music_->play();
+    applyMusicGate();
+}
+
+void GameController::applyMusicGate() {
+    if (!music_) return;
+    const bool want = musicOn_ && (screen_ != 0 || titleAudio_);
+    if (want == musicWanted_) return;
+    musicWanted_ = want;
+    if (want) music_->play();
+    else music_->pause();
+}
+
+void GameController::setTitleAudio(bool on) {
+    if (titleAudio_ == on) return;
+    titleAudio_ = on;
+    saveSettings();
+    applyMusicGate();
+    if (!on) stopFightSounds();
+    refresh();
 }
 
 void GameController::applyMusicVolume() {
@@ -424,10 +453,7 @@ void GameController::playSound(const QString& name) {
 
 void GameController::toggleMusic() {
     musicOn_ = !musicOn_;
-    if (music_) {
-        if (musicOn_) music_->play();
-        else music_->pause();
-    }
+    applyMusicGate();
     saveSettings();
     refresh();
 }
@@ -442,6 +468,7 @@ void GameController::refresh() {
         }
     }
     rebuildHints();
+    applyMusicGate();
     emit tick();
 }
 
@@ -790,7 +817,8 @@ void GameController::applyLocal(const Move& m, bool tell) {
     if (tell) sendMoveMsg(m, notation);
     int rookFrom = -1;
     int rookTo = -1;
-    if (captured) {
+    const bool clash = captured && battleScenes_;
+    if (clash) {
         beginFight(attacker, captured);
         gliding_ = false;
     } else {
@@ -810,13 +838,13 @@ void GameController::applyLocal(const Move& m, bool tell) {
             }
         }
         gliding_ = true;
-        playSound("move");
+        playSound(captured ? QStringLiteral("hit") : QStringLiteral("move"));
         QTimer::singleShot(860, this, [this]() {
             if (gliding_) onMotionDone();
         });
     }
     refresh();
-    if (!captured) emit glide(m.from, m.to, rookFrom, rookTo);
+    if (!clash) emit glide(m.from, m.to, rookFrom, rookTo);
 }
 
 void GameController::beginFight(int attacker, int defender) {
