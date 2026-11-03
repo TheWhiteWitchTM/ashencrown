@@ -23,6 +23,19 @@ function strikeAt(at, dt) {
     return 140
 }
 
+function deathAt(at, dt) {
+    return strikeAt(at, dt)
+}
+
+function deathSound(dt) {
+    if (dt === 2) return "fall_knight"
+    if (dt === 3) return "fall_bishop"
+    if (dt === 4) return "fall_rook"
+    if (dt === 5) return "fall_queen"
+    if (dt === 6) return "fall_king"
+    return "fall_pawn"
+}
+
 function tintFor(at, aside) {
     if (at === 3) return aside === 0 ? "#d7e6ff" : "#e07080"
     if (at === 5) return aside === 0 ? "#8ec2ff" : "#ff4a3a"
@@ -396,8 +409,9 @@ function makePose(phase, at, dt, aside, dside) {
     }
     if (phase >= hit && phase < hit + 12) {
         var k = 1 - (phase - hit) / 12
-        p.flash = 0.2 * k
-        if (p.shake < 5) p.shake = 10 * k
+        p.flash = 0.36 * k
+        if (p.shake < 6) p.shake = 14 * k
+        p.dust = Math.max(p.dust, 0.8 * k)
     }
     return p
 }

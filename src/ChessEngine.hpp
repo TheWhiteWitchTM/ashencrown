@@ -34,6 +34,14 @@ public:
     bool insufficient() const;
 
     std::vector<Move> legalMoves();
+    // Legal moves as if `side` were to move. The board, side, and key are left as they were.
+    std::vector<Move> legalMovesFor(int side);
+    // Squares of `byColor` pieces that attack sq. Pins are ignored.
+    std::vector<int> attackers(int sq, int byColor) const;
+    // After `bySide` plays `cap`, the square of a piece that can take on the landing square, or -1.
+    int recaptureFrom(const Move& cap, int bySide);
+    // Legal landing squares for the piece on sq, as if it were that side's turn.
+    std::vector<int> targetsFrom(int sq);
     std::string san(const Move& m);
     bool pick(int from, int to, int promo, Move& out);
 

@@ -23,6 +23,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <iostream>
 
 namespace {
 
@@ -63,6 +64,23 @@ QString soundFor(const QString& style) {
     if (style == "holy") return "holy";
     if (style == "shadow" || style == "fire") return "magic";
     return "melee";
+}
+
+int pieceValue(int type) {
+    switch (type) {
+    case 1: return 1;
+    case 2: return 3;
+    case 3: return 3;
+    case 4: return 5;
+    case 5: return 9;
+    default: return 0;
+    }
+}
+
+bool tierAllows(int tier, int severity) {
+    if (severity < 1 || tier <= 0) return false;
+    if (tier >= 2) return true;
+    return severity >= 2;
 }
 
 QString bark(int as, int at, int ds, int dt) {
@@ -250,6 +268,19 @@ QVariantList GameController::legalTargets() const {
     return out;
 }
 
+QVariantList GameController::gazeTargets(int sq) const {
+    QVariantList out;
+    if (sq < 0 || sq > 63) return out;
+    const int p = engine_.pieceAt(sq);
+    if (!p) return out;
+    const int side = p > 0 ? 0 : 1;
+    if (side == engine_.sideToMove()) return out;
+    ChessEngine copy = engine_;
+    const auto targets = copy.targetsFrom(sq);
+    for (int to : targets) out << to;
+    return out;
+}
+
 bool GameController::flipped() const {
     if (mode_ == Mode::Hotseat) return engine_.sideToMove() == 1;
     return mySide_ == 1;
@@ -285,7 +316,7 @@ void GameController::setPlayerName(const QString& name) {
 void GameController::setVolume(qreal volume) {
     volume_ = std::clamp(volume, 0.0, 1.0);
     for (QSoundEffect* s : sounds_) s->setVolume(float(volume_));
-    if (audio_) audio_->setVolume(float(volume_ * 0.22));
+    applyMusicVolume();
     saveSettings();
     refresh();
 }
@@ -323,7 +354,8 @@ void GameController::saveSettings() const {
 void GameController::initAudio() {
     if (qEnvironmentVariableIsSet("ASHENCROWN_NO_AUDIO")) return;
     const char* names[] = {"click", "move", "melee", "magic", "holy", "beast", "siege",
-                           "check", "win", "lose", "hit", "drums", "notify"};
+                           "check", "win", "lose", "hit", "drums", "notify", "sting",
+                           "fall_pawn", "fall_knight", "fall_bishop", "fall_rook", "fall_queen", "fall_king"};
     for (const char* name : names) {
         auto* fx = new QSoundEffect(this);
         fx->setSource(QUrl(QString("qrc:/assets/sounds/%1.wav").arg(name)));
@@ -335,8 +367,26 @@ void GameController::initAudio() {
     music_->setAudioOutput(audio_);
     music_->setSource(QUrl("qrc:/assets/sounds/music.wav"));
     music_->setLoops(QMediaPlayer::Infinite);
-    audio_->setVolume(float(volume_ * 0.22));
+    applyMusicVolume();
     if (musicOn_) music_->play();
+}
+
+void GameController::applyMusicVolume() {
+    if (audio_) audio_->setVolume(float(volume_ * 0.22 * musicBed_));
+}
+
+void GameController::setMusicBed(qreal bed) {
+    musicBed_ = std::clamp(bed, 0.0, 1.0);
+    applyMusicVolume();
+}
+
+void GameController::stopFightSounds() {
+    const char* names[] = {"sting", "fall_pawn", "fall_knight", "fall_bishop", "fall_rook",
+                           "fall_queen", "fall_king", "melee", "magic", "holy", "beast", "siege", "hit", "drums"};
+    for (const char* name : names) {
+        QSoundEffect* fx = sounds_.value(name, nullptr);
+        if (fx) fx->stop();
+    }
 }
 
 QString GameController::coffeeUrl() const {
@@ -391,7 +441,202 @@ void GameController::refresh() {
             if (engine_.pieceAt(s) == want) checkSquare_ = s;
         }
     }
+    rebuildHints();
     emit tick();
+}
+
+int GameController::hintTier() const {
+    if (mode_ != Mode::Ai || screen_ != 2 || gameOver_ || mySide_ < 0) return 0;
+    if (level_ <= 0) return 3;
+    if (level_ == 1) return 2;
+    if (level_ == 2) return 1;
+    return 0;
+}
+
+QVariantMap GameController::coachMove(const Move& m) const {
+    QVariantMap out;
+    const int human = mySide_;
+    if (human < 0) return out;
+    const int enemy = 1 - human;
+    ChessEngine sim = engine_;
+    sim.make(m);
+    const int landedType = std::abs(sim.pieceAt(m.to));
+    const QString moverName = pieceName(human, landedType);
+    int cheapest = 100;
+    int cheapType = 0;
+    bool loose = false;
+    int defenderSq = -1;
+    QVariantList marks;
+    const std::vector<Move> replies = sim.legalMoves();
+    for (const Move& r : replies) {
+        if (r.to != m.to || sim.pieceAt(m.to) == 0) continue;
+        const int at = std::abs(sim.pieceAt(r.from));
+        const int landed = r.promo ? r.promo : at;
+        const int val = pieceValue(landed);
+        if (!marks.contains(r.from)) marks << r.from;
+        if (val < cheapest) {
+            cheapest = val;
+            cheapType = at;
+        }
+        ChessEngine reply = sim;
+        const int back = reply.recaptureFrom(r, sim.sideToMove());
+        if (back < 0) loose = true;
+        else if (defenderSq < 0) defenderSq = back;
+    }
+    int severity = -1;
+    QString line;
+    if (!marks.isEmpty() && landedType > 0 && landedType != 6) {
+        if (loose) severity = 2;
+        else if (cheapest < pieceValue(landedType)) severity = 1;
+        if (severity >= 2) {
+            line = QString("The %1 would fall to the %2. Nothing takes it back.")
+                       .arg(moverName, pieceName(enemy, cheapType));
+        } else if (severity == 1) {
+            const int defType = defenderSq >= 0 ? std::abs(sim.pieceAt(defenderSq)) : 0;
+            const QString defenderName = defType ? pieceName(human, defType) : QString("answer");
+            line = QString("The %1 can take the %2 there. The %3 answers, and the trade still costs you.")
+                       .arg(pieceName(enemy, cheapType), moverName, defenderName);
+        }
+    }
+    QString hungName;
+    int hungFrom = -1;
+    for (const Move& r : replies) {
+        int victimSq = r.to;
+        if (r.kind == 2) victimSq = r.to + (sim.sideToMove() == 0 ? -8 : 8);
+        if (victimSq == m.to) continue;
+        const int victim = sim.pieceAt(victimSq);
+        if (!victim || (victim > 0 ? 0 : 1) != human || std::abs(victim) == 6) continue;
+        if (threatSev_[victimSq] >= 2) continue;
+        ChessEngine reply = sim;
+        if (reply.recaptureFrom(r, sim.sideToMove()) >= 0) continue;
+        hungName = pieceName(human, std::abs(victim));
+        hungFrom = r.from;
+        break;
+    }
+    if (!hungName.isEmpty() && severity < 2) {
+        severity = 2;
+        line = QString("This step leaves the %1 loose.").arg(hungName);
+        marks.clear();
+        if (hungFrom >= 0) marks << hungFrom;
+    }
+    if (severity < 1 || line.isEmpty()) return out;
+    out["show"] = true;
+    out["severity"] = severity;
+    out["line"] = line;
+    out["marks"] = marks;
+    out["sq"] = m.to;
+    return out;
+}
+
+void GameController::rebuildHints() {
+    looseMarks_.clear();
+    cautionMarks_.clear();
+    for (int i = 0; i < 64; ++i) {
+        looseMarks_ << 0;
+        cautionMarks_ << 0;
+        threatSev_[i] = 0;
+        threatLine_[i].clear();
+        threatMarks_[i].clear();
+        moveOn_[i] = false;
+        moveSev_[i] = -1;
+        moveLine_[i].clear();
+        moveMarks_[i].clear();
+    }
+    const int tier = hintTier();
+    if (tier <= 0) return;
+    const int human = mySide_;
+    const int enemy = 1 - human;
+    ChessEngine scan = engine_;
+    std::vector<Move> incoming[64];
+    for (const Move& m : scan.legalMovesFor(enemy)) {
+        int victimSq = m.to;
+        if (m.kind == 2) victimSq = m.to + (enemy == 0 ? -8 : 8);
+        if (victimSq < 0 || victimSq > 63) continue;
+        const int victim = engine_.pieceAt(victimSq);
+        if (!victim || (victim > 0 ? 0 : 1) != human || std::abs(victim) == 6) continue;
+        incoming[victimSq].push_back(m);
+    }
+    for (int sq = 0; sq < 64; ++sq) {
+        if (incoming[sq].empty()) continue;
+        const int victim = std::abs(engine_.pieceAt(sq));
+        const int victimVal = pieceValue(victim);
+        int cheapest = 100;
+        int cheapType = 0;
+        bool loose = false;
+        int defenderSq = -1;
+        QVariantList marks;
+        for (const Move& m : incoming[sq]) {
+            const int mover = std::abs(engine_.pieceAt(m.from));
+            const int landed = m.promo ? m.promo : mover;
+            const int val = pieceValue(landed);
+            if (!marks.contains(m.from)) marks << m.from;
+            if (val < cheapest) {
+                cheapest = val;
+                cheapType = mover;
+            }
+            ChessEngine sim = engine_;
+            const int back = sim.recaptureFrom(m, enemy);
+            if (back < 0) loose = true;
+            else if (defenderSq < 0) defenderSq = back;
+        }
+        int severity = 0;
+        if (loose) severity = 2;
+        else if (cheapest < victimVal) severity = 1;
+        const QString attackerName = pieceName(enemy, cheapType);
+        const QString victimName = pieceName(human, victim);
+        QString extra;
+        if (marks.size() == 2) extra = " Another can reach it too.";
+        else if (marks.size() > 2) extra = " Others can reach it too.";
+        QString line;
+        if (severity >= 2) {
+            line = QString("The %1 can take this %2. Nothing takes it back.%3").arg(attackerName, victimName, extra);
+        } else if (severity == 1) {
+            const int defType = defenderSq >= 0 ? std::abs(engine_.pieceAt(defenderSq)) : 0;
+            const QString defenderName = defType ? pieceName(human, defType) : QString("answer");
+            line = QString("The %1 can take this %2. The %3 can answer, and the trade still costs you.%4")
+                       .arg(attackerName, victimName, defenderName, extra);
+        }
+        threatSev_[sq] = severity;
+        threatLine_[sq] = line;
+        threatMarks_[sq] = marks;
+        if (tier >= 3 && severity >= 1) looseMarks_[sq] = severity;
+    }
+    if (selected_ < 0 || engine_.sideToMove() != human) return;
+    for (const Move& m : legal_) {
+        if (m.from != selected_) continue;
+        const QVariantMap advice = coachMove(m);
+        if (advice.isEmpty()) continue;
+        const int sev = advice.value("severity").toInt();
+        if (moveOn_[m.to] && sev <= moveSev_[m.to]) continue;
+        moveOn_[m.to] = true;
+        moveSev_[m.to] = sev;
+        moveLine_[m.to] = advice.value("line").toString();
+        moveMarks_[m.to] = advice.value("marks").toList();
+        if (tier >= 3) cautionMarks_[m.to] = sev;
+    }
+}
+
+QVariantMap GameController::coachAt(int sq) const {
+    QVariantMap out;
+    if (sq < 0 || sq > 63) return out;
+    const int tier = hintTier();
+    if (tier <= 0) return out;
+    auto pack = [&](int severity, const QString& line, const QVariantList& marks) {
+        QVariantMap m;
+        m["show"] = true;
+        m["severity"] = severity;
+        m["line"] = line;
+        m["marks"] = tier >= 2 ? marks : QVariantList();
+        m["sq"] = sq;
+        return m;
+    };
+    if (moveOn_[sq] && tierAllows(tier, moveSev_[sq]))
+        return pack(moveSev_[sq], moveLine_[sq], moveMarks_[sq]);
+    const int piece = engine_.pieceAt(sq);
+    const int side = piece > 0 ? 0 : (piece < 0 ? 1 : -1);
+    if (piece && side == mySide_ && std::abs(piece) != 6 && tierAllows(tier, threatSev_[sq]))
+        return pack(threatSev_[sq], threatLine_[sq], threatMarks_[sq]);
+    return out;
 }
 
 void GameController::startAi(int side, int aiLevel) {
@@ -566,7 +811,7 @@ void GameController::applyLocal(const Move& m, bool tell) {
         }
         gliding_ = true;
         playSound("move");
-        QTimer::singleShot(400, this, [this]() {
+        QTimer::singleShot(860, this, [this]() {
             if (gliding_) onMotionDone();
         });
     }
@@ -1532,4 +1777,104 @@ void GameController::onBskyRecord(const QString& did, const QString& op, const Q
         return;
     }
     if (note.verb == "REMATCH" && gameOver_) applyRematch();
+}
+
+int GameController::coachSelfTest() {
+    QCoreApplication::setOrganizationName(QStringLiteral("AshenCrown"));
+    QCoreApplication::setApplicationName(QStringLiteral("AshenCrownCoachTest"));
+    qputenv("ASHENCROWN_NO_AUDIO", "1");
+    GameController g;
+    int failed = 0;
+    auto expect = [&](bool ok, const char* msg) {
+        if (!ok) {
+            std::cerr << msg << "\n";
+            ++failed;
+        }
+    };
+    auto load = [&](const char* fen, int side, int level) {
+        g.mode_ = Mode::Ai;
+        g.mySide_ = side;
+        g.level_ = level;
+        g.screen_ = 2;
+        g.gameOver_ = false;
+        g.selected_ = -1;
+        g.engine_.setFen(fen);
+        g.refresh();
+    };
+
+    load("8/8/8/2n5/4P3/8/8/4K2k w - - 0 1", 0, 0);
+    expect(g.hintTier() == 3, "novice tier");
+    expect(g.looseMarks_.value(28).toInt() == 2, "hanging pawn marked");
+    const QVariantMap hang = g.coachAt(28);
+    expect(hang.value("show").toBool(), "hanging pawn speaks");
+    expect(hang.value("severity").toInt() == 2, "hanging severity");
+    expect(hang.value("line").toString().contains("Wolf Rider"), "names the rider");
+    expect(hang.value("line").toString().contains("Nothing takes it back"), "says it is loose");
+    expect(hang.value("marks").toList().contains(34), "marks the rider");
+
+    load("8/8/8/2n5/4P3/8/3N4/4K2k w - - 0 1", 0, 0);
+    expect(g.looseMarks_.value(28).toInt() == 0, "held pawn is not marked");
+    expect(!g.coachAt(28).value("show").toBool(), "held pawn stays quiet");
+    g.selected_ = 11;
+    g.refresh();
+    const QVariantMap left = g.coachAt(5);
+    expect(left.value("severity").toInt() == 2, "stepping away hangs the footman");
+    expect(left.value("line").toString().contains("Footman"), "names the piece left loose");
+    expect(left.value("line").toString().contains("loose"), "says the piece is loose");
+
+    load("8/8/8/3p4/4Q3/5P2/8/4K2k w - - 0 1", 0, 0);
+    expect(g.looseMarks_.value(28).toInt() == 1, "bad trade marked");
+    const QVariantMap trade = g.coachAt(28);
+    expect(trade.value("severity").toInt() == 1, "trade severity");
+    expect(trade.value("line").toString().contains("trade"), "trade words");
+    expect(trade.value("line").toString().contains("Footman"), "names the defender");
+
+    g.level_ = 2;
+    g.refresh();
+    expect(g.hintTier() == 1, "warlord tier");
+    expect(g.looseMarks_.value(28).toInt() == 0, "warlord does not mark the trade");
+    expect(!g.coachAt(28).value("show").toBool(), "warlord is silent on a trade");
+
+    load("8/8/8/2n5/4P3/8/8/4K2k w - - 0 1", 0, 2);
+    expect(g.coachAt(28).value("show").toBool(), "warlord names a loose piece");
+    expect(g.coachAt(28).value("marks").toList().isEmpty(), "warlord draws no squares");
+    expect(g.looseMarks_.value(28).toInt() == 0, "warlord leaves the board unmarked");
+
+    g.level_ = 3;
+    g.refresh();
+    expect(g.hintTier() == 0, "legend tier");
+    expect(!g.coachAt(28).value("show").toBool(), "legend is silent");
+
+    load("8/8/8/2n5/8/8/4P3/4K2k w - - 0 1", 0, 0);
+    g.selected_ = 12;
+    g.refresh();
+    const QVariantMap step = g.coachAt(28);
+    expect(step.value("show").toBool() && step.value("severity").toInt() == 2, "e4 hangs the footman");
+    expect(g.cautionMarks_.value(28).toInt() == 2, "training marks the bad square");
+    expect(!g.coachAt(20).value("show").toBool(), "e3 is quiet");
+    expect(g.cautionMarks_.value(20).toInt() == 0, "e3 is not marked");
+
+    g.level_ = 1;
+    g.refresh();
+    expect(g.hintTier() == 2, "veteran tier");
+    expect(g.coachAt(28).value("show").toBool(), "veteran warns on the bad step");
+    expect(!g.coachAt(28).value("marks").toList().isEmpty(), "veteran still points at the threat");
+    expect(g.cautionMarks_.value(28).toInt() == 0, "veteran does not paint the square ahead of the hover");
+
+    load("8/8/8/2p5/4N3/8/8/4K2k b - - 0 1", 1, 0);
+    expect(g.looseMarks_.value(34).toInt() == 2, "horde pawn is marked");
+    expect(g.coachAt(34).value("line").toString().contains("Paladin"), "names the paladin");
+
+    g.mode_ = Mode::Hotseat;
+    g.mySide_ = -1;
+    g.refresh();
+    expect(g.hintTier() == 0, "a shared table has no coach");
+    expect(!g.coachAt(34).value("show").toBool(), "hotseat stays silent");
+
+    if (failed) {
+        std::cerr << failed << " coach test(s) failed\n";
+        return 1;
+    }
+    std::cout << "coach ok\n";
+    return 0;
 }

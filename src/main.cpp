@@ -100,6 +100,7 @@ int loopbackSelfTest() {
 
 int runSelfTest() {
     if (ChessEngine::chessSelfTest() != 0) return 1;
+    if (GameController::coachSelfTest() != 0) return 1;
     if (netCodeSelfTest() != 0) return 1;
     if (aiSelfTest() != 0) return 1;
     if (loopbackSelfTest() != 0) return 1;

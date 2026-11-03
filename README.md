@@ -25,7 +25,7 @@ cmake --build build -j
 
 ## How a match is played
 
-- **Battle the Horde / Alliance** — you take the side you picked. Novice sometimes plays a random legal move. Veteran, Warlord, and Legend search deeper.
+- **Battle the Horde / Alliance** — you take the side you picked. Novice sometimes plays a random legal move, and the board trains you: a piece you can lose is marked, and hovering it names the threat. Veteran warns only when the loss is real. Warlord speaks only for a piece left loose. Legend searches deepest and says nothing.
 - **Two at one table** — the board turns so the side to move sits at the bottom.
 - **Across the warfront** — one player waits and shares the warcode. The other pastes it and marches.
 - **Over Bluesky** — both sign in, type each other's handle, and sit. Moves travel as public posts on that account's firehose, then the post is deleted.

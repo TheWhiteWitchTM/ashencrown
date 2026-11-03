@@ -195,6 +195,88 @@ bool ChessEngine::attacked(int sq, int byColor) const {
     return false;
 }
 
+std::vector<int> ChessEngine::attackers(int sq, int byColor) const {
+    std::vector<int> out;
+    if (sq < 0 || sq > 63 || byColor < 0 || byColor > 1) return out;
+    const int ff = fileOf(sq);
+    const int fr = rankOf(sq);
+    const int pawnDir = byColor == 0 ? -1 : 1;
+    const int pawn = byColor == 0 ? 1 : -1;
+    for (int df : {-1, 1}) {
+        int f = ff + df;
+        int r = fr + pawnDir;
+        if (onBoard(f, r) && board_[makeSq(f, r)] == pawn) out.push_back(makeSq(f, r));
+    }
+    const int knight = byColor == 0 ? 2 : -2;
+    const int nd[8][2] = {{1, 2}, {2, 1}, {2, -1}, {1, -2}, {-1, -2}, {-2, -1}, {-2, 1}, {-1, 2}};
+    for (auto d : nd) {
+        int f = ff + d[0], r = fr + d[1];
+        if (onBoard(f, r) && board_[makeSq(f, r)] == knight) out.push_back(makeSq(f, r));
+    }
+    const int king = byColor == 0 ? 6 : -6;
+    for (int dr = -1; dr <= 1; ++dr)
+        for (int df = -1; df <= 1; ++df) {
+            if (!dr && !df) continue;
+            int f = ff + df, r = fr + dr;
+            if (onBoard(f, r) && board_[makeSq(f, r)] == king) out.push_back(makeSq(f, r));
+        }
+    const int bishop = byColor == 0 ? 3 : -3;
+    const int rook = byColor == 0 ? 4 : -4;
+    const int queen = byColor == 0 ? 5 : -5;
+    const int dirs[8][2] = {{1, 1}, {1, -1}, {-1, 1}, {-1, -1}, {1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+    for (int i = 0; i < 8; ++i) {
+        int f = ff + dirs[i][0], r = fr + dirs[i][1];
+        bool diagonal = i < 4;
+        while (onBoard(f, r)) {
+            int p = board_[makeSq(f, r)];
+            if (p) {
+                if (p == queen || p == (diagonal ? bishop : rook)) out.push_back(makeSq(f, r));
+                break;
+            }
+            f += dirs[i][0];
+            r += dirs[i][1];
+        }
+    }
+    return out;
+}
+
+std::vector<Move> ChessEngine::legalMovesFor(int side) {
+    if (side == side_) return legalMoves();
+    const int savedSide = side_;
+    const int savedEp = ep_;
+    side_ = side & 1;
+    ep_ = -1;
+    std::vector<Move> moves = legalMoves();
+    side_ = savedSide;
+    ep_ = savedEp;
+    recomputeKey();
+    return moves;
+}
+
+int ChessEngine::recaptureFrom(const Move& cap, int bySide) {
+    const int savedSide = side_;
+    const int savedEp = ep_;
+    const bool flipped = side_ != (bySide & 1);
+    if (flipped) {
+        side_ = bySide & 1;
+        ep_ = -1;
+    }
+    make(cap);
+    int found = -1;
+    for (const Move& r : legalMoves()) {
+        if (r.to != cap.to) continue;
+        found = r.from;
+        break;
+    }
+    unmake();
+    if (flipped) {
+        side_ = savedSide;
+        ep_ = savedEp;
+        recomputeKey();
+    }
+    return found;
+}
+
 bool ChessEngine::inCheck(int color) const {
     int king = color == 0 ? 6 : -6;
     for (int s = 0; s < 64; ++s)
@@ -300,6 +382,35 @@ void ChessEngine::generate(std::vector<Move>& out) const {
             !attacked(60, opp) && !attacked(59, opp) && !attacked(58, opp))
             out.push_back(Move{60, 58, 0, 1});
     }
+}
+
+std::vector<int> ChessEngine::targetsFrom(int sq) {
+    std::vector<int> out;
+    if (sq < 0 || sq > 63) return out;
+    const int p = board_[sq];
+    if (!p) return out;
+    const int pieceSide = p > 0 ? 0 : 1;
+    const int savedSide = side_;
+    const int savedEp = ep_;
+    if (pieceSide != side_) {
+        side_ = pieceSide;
+        ep_ = -1;
+    }
+    for (const Move& m : legalMoves()) {
+        if (m.from != sq) continue;
+        bool seen = false;
+        for (int t : out) {
+            if (t == m.to) {
+                seen = true;
+                break;
+            }
+        }
+        if (!seen) out.push_back(m.to);
+    }
+    side_ = savedSide;
+    ep_ = savedEp;
+    if (pieceSide != savedSide) recomputeKey();
+    return out;
 }
 
 std::vector<Move> ChessEngine::legalMoves() {
@@ -551,6 +662,80 @@ int ChessEngine::chessSelfTest() {
         ++failed;
     } else {
         std::cout << "en passant ok\n";
+    }
+    auto containsSq = [](const std::vector<int>& v, int sq) {
+        for (int s : v)
+            if (s == sq) return true;
+        return false;
+    };
+    ChessEngine gaze;
+    const char* startFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+    const uint64_t gazeKey = gaze.setFen(startFen) ? gaze.key() : 0;
+    const auto a2 = gaze.targetsFrom(8);
+    const auto a7 = gaze.targetsFrom(48);
+    const auto b8 = gaze.targetsFrom(57);
+    if (!gazeKey || a2.size() != 2 || !containsSq(a2, 16) || !containsSq(a2, 24) || a7.size() != 2 ||
+        !containsSq(a7, 40) || !containsSq(a7, 32) || b8.size() != 2 || !containsSq(b8, 40) || !containsSq(b8, 42) ||
+        gaze.fen() != startFen || gaze.key() != gazeKey) {
+        std::cerr << "gaze targets failed\n";
+        ++failed;
+    } else {
+        std::cout << "gaze targets ok\n";
+    }
+    ChessEngine pinned;
+    pinned.setFen("4k3/8/8/8/8/8/4n3/4R3 w - - 0 1");
+    if (!pinned.targetsFrom(12).empty() || pinned.sideToMove() != 0) {
+        std::cerr << "pinned gaze failed\n";
+        ++failed;
+    } else {
+        std::cout << "pinned gaze ok\n";
+    }
+    ChessEngine threats;
+    const char* hangFen = "8/8/8/2n5/4P3/8/8/4K2k w - - 0 1";
+    if (!threats.setFen(hangFen)) {
+        std::cerr << "threat fen rejected\n";
+        ++failed;
+    } else {
+        const uint64_t key = threats.key();
+        const auto who = threats.attackers(28, 1);
+        bool knight = false;
+        for (int s : who)
+            if (s == 34) knight = true;
+        Move cap;
+        bool have = false;
+        for (const Move& m : threats.legalMovesFor(1)) {
+            if (m.from == 34 && m.to == 28) {
+                cap = m;
+                have = true;
+            }
+        }
+        const int bare = have ? threats.recaptureFrom(cap, 1) : 0;
+        if (!knight || !have || bare != -1 || threats.fen() != hangFen || threats.key() != key ||
+            threats.sideToMove() != 0) {
+            std::cerr << "hanging pawn scan failed\n";
+            ++failed;
+        } else if (!threats.setFen("8/8/8/2n5/4P3/8/3N4/4K2k w - - 0 1")) {
+            std::cerr << "defended fen rejected\n";
+            ++failed;
+        } else {
+            const std::string heldFen = threats.fen();
+            const uint64_t heldKey = threats.key();
+            Move take;
+            bool got = false;
+            for (const Move& m : threats.legalMovesFor(1)) {
+                if (m.from == 34 && m.to == 28) {
+                    take = m;
+                    got = true;
+                }
+            }
+            const int back = got ? threats.recaptureFrom(take, 1) : -2;
+            if (!got || back != 11 || threats.fen() != heldFen || threats.key() != heldKey) {
+                std::cerr << "defended recapture failed\n";
+                ++failed;
+            } else {
+                std::cout << "threat scan ok\n";
+            }
+        }
     }
     if (failed) std::cerr << failed << " chess test(s) failed\n";
     else std::cout << "chess self-test passed\n";

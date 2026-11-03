@@ -120,6 +120,23 @@ Item {
                 }
             }
 
+            Text {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                color: "#cbb892"
+                font.family: screen.fontFamily
+                font.pixelSize: 13
+                text: {
+                    var lines = [
+                        "Novice trains you. A piece you can lose is marked, and a hover names the threat.",
+                        "Veteran speaks only when a piece would truly be lost.",
+                        "Warlord gives one line, and only for a piece left loose.",
+                        "Legend gives no counsel."
+                    ]
+                    return lines[Game.level] || lines[3]
+                }
+            }
+
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 6

@@ -14,6 +14,7 @@
 #include <QVariantMap>
 #include <QtGlobal>
 
+#include <array>
 #include <atomic>
 #include <memory>
 #include <thread>
@@ -34,6 +35,9 @@ class GameController : public QObject {
     Q_PROPERTY(int faction READ faction WRITE setFaction NOTIFY tick)
     Q_PROPERTY(int level READ level WRITE setLevel NOTIFY tick)
     Q_PROPERTY(QString levelName READ levelName NOTIFY tick)
+    Q_PROPERTY(int hintTier READ hintTier NOTIFY tick)
+    Q_PROPERTY(QVariantList looseMarks READ looseMarks NOTIFY tick)
+    Q_PROPERTY(QVariantList cautionMarks READ cautionMarks NOTIFY tick)
     Q_PROPERTY(QString playerName READ playerName WRITE setPlayerName NOTIFY tick)
     Q_PROPERTY(QString peerName READ peerName NOTIFY tick)
     Q_PROPERTY(QString opponentLine READ opponentLine NOTIFY tick)
@@ -86,6 +90,9 @@ public:
     int faction() const { return hostSide_; }
     int level() const { return level_; }
     QString levelName() const;
+    int hintTier() const;
+    QVariantList looseMarks() const { return looseMarks_; }
+    QVariantList cautionMarks() const { return cautionMarks_; }
     QString playerName() const { return playerName_; }
     QString peerName() const { return peerName_; }
     QString opponentLine() const;
@@ -144,6 +151,7 @@ public:
     Q_INVOKABLE void march(const QString& code);
     Q_INVOKABLE void joinLan(const QString& ip, int port);
     Q_INVOKABLE void clickSquare(int sq);
+    Q_INVOKABLE QVariantList gazeTargets(int sq) const;
     Q_INVOKABLE void choosePromo(int type);
     Q_INVOKABLE void cancelPromo();
     Q_INVOKABLE void fightFinished();
@@ -156,8 +164,13 @@ public:
     Q_INVOKABLE void copyText(const QString& text);
     Q_INVOKABLE void toggleMusic();
     Q_INVOKABLE void playSound(const QString& name);
+    Q_INVOKABLE void stopFightSounds();
+    Q_INVOKABLE void setMusicBed(qreal bed);
+    Q_INVOKABLE QVariantMap coachAt(int sq) const;
     Q_INVOKABLE void openCoffee();
     Q_INVOKABLE void closeCoffee();
+
+    static int coachSelfTest();
 
 signals:
     void tick();
@@ -174,6 +187,9 @@ private:
     };
 
     void refresh();
+    void rebuildHints();
+    void applyMusicVolume();
+    QVariantMap coachMove(const Move& m) const;
     void saveSettings() const;
     void loadSettings();
     void initAudio();
@@ -253,6 +269,16 @@ private:
     int joinGen_ = 0;
     int thinkGen_ = 0;
     qreal volume_ = 0.85;
+    qreal musicBed_ = 1;
+    QVariantList looseMarks_;
+    QVariantList cautionMarks_;
+    std::array<int, 64> threatSev_{};
+    std::array<QString, 64> threatLine_{};
+    std::array<QVariantList, 64> threatMarks_{};
+    std::array<bool, 64> moveOn_{};
+    std::array<int, 64> moveSev_{};
+    std::array<QString, 64> moveLine_{};
+    std::array<QVariantList, 64> moveMarks_{};
     QString playerName_;
     QString peerName_;
     QString statusLine_;

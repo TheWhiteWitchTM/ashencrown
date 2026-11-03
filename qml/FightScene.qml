@@ -8,6 +8,7 @@ Item {
     property real phase: 0
     property bool closed: false
     property bool struck: false
+    property bool doomed: false
     property bool feint: false
     property bool reel: false
     property int reelIndex: 0
@@ -59,6 +60,8 @@ Item {
         if (closed || !Game.fightActive) return
         closed = true
         clock.stop()
+        if (phase < 200) Game.stopFightSounds()
+        if (!reel) Game.setMusicBed(1)
         Game.fightFinished()
     }
 
@@ -66,11 +69,14 @@ Item {
         if (visible) {
             closed = false
             struck = false
+            doomed = false
             feint = false
             phase = 0
+            if (!reel) Game.setMusicBed(0.32)
             clock.start()
         } else {
             clock.stop()
+            if (!reel) Game.setMusicBed(1)
         }
     }
 
@@ -85,6 +91,7 @@ Item {
         onTriggered: {
             phase = Math.min(200, phase + 0.62)
             var hitAt = Duel.strikeAt(scene.atkType, scene.defType)
+            var fallAt = Duel.deathAt(scene.atkType, scene.defType)
             if (!scene.reel && !feint && phase >= 56 && (scene.atkType === 1 || scene.atkType === 6)) {
                 feint = true
                 Game.playSound("melee")
@@ -95,13 +102,23 @@ Item {
             }
             if (phase >= hitAt && !struck) {
                 struck = true
-                if (!scene.reel) Game.playSound("hit")
+                if (!scene.reel) {
+                    Game.playSound("hit")
+                    Game.setMusicBed(0.16)
+                }
+            }
+            if (!scene.reel && !doomed && phase >= fallAt + 8) {
+                doomed = true
+                Game.setMusicBed(0.08)
+                Game.playSound("sting")
+                Game.playSound(Duel.deathSound(scene.defType))
             }
             if (phase >= 200) {
                 if (scene.reel) {
                     reelIndex = (reelIndex + 1) % reelCards.length
                     phase = 0
                     struck = false
+                    doomed = false
                     feint = false
                 } else {
                     scene.closeFight()
@@ -195,11 +212,13 @@ Item {
 
         WarpQuad {
             z: 8
+            opacity: 0.66 + 0.34 * (0.5 + 0.5 * Math.sin(scene.phase * 0.1))
             corners: mesh.view3d ? Board.topQuad(mesh.view3d, -mesh.view3d.margin * 0.72, -0.04, 0.12, mesh.view3d.ranks - 0.12, 0.02) : null
             Rectangle { anchors.fill: parent; color: court.atkCamp.inlay }
         }
         WarpQuad {
             z: 8
+            opacity: 0.66 + 0.34 * (0.5 + 0.5 * Math.sin(scene.phase * 0.1 + 1.2))
             corners: mesh.view3d ? Board.topQuad(mesh.view3d, mesh.view3d.files + 0.04, mesh.view3d.files + mesh.view3d.margin * 0.72, 0.12, mesh.view3d.ranks - 0.12, 0.02) : null
             Rectangle { anchors.fill: parent; color: court.defCamp.inlay }
         }
@@ -237,28 +256,103 @@ Item {
             id: stage
             z: 40
             anchors.fill: parent
-            transform: Translate {
-                x: Math.sin(scene.phase * 3.4) * scene.pose.shake
-                y: Math.cos(scene.phase * 4.2) * scene.pose.shake * 0.35
-            }
+            transform: [
+                Translate {
+                    x: Math.sin(scene.phase * 3.4) * scene.pose.shake
+                    y: Math.cos(scene.phase * 4.2) * scene.pose.shake * 0.35
+                },
+                Scale {
+                    origin.x: stage.width / 2
+                    origin.y: stage.height * 0.62
+                    xScale: 1 + scene.pose.flash * 0.04
+                    yScale: 1 + scene.pose.flash * 0.04
+                }
+            ]
 
             Rectangle {
                 x: attacker.stand ? attacker.stand.footX - width / 2 : 0
-                y: attacker.stand ? attacker.stand.footY - height * 0.45 : 0
-                width: attacker.stand ? attacker.stand.w * 0.72 : 0
-                height: Math.max(10, width * 0.36)
+                y: attacker.stand ? attacker.stand.footY - height * 0.32 : 0
+                width: attacker.stand ? attacker.stand.shadeW * 0.5 * attacker.stand.shadow : 0
+                height: Math.max(8, width * 0.28)
+                radius: height / 2
+                color: "#000000"
+                opacity: 0.48 * scene.pose.ao
+            }
+            Rectangle {
+                x: attacker.stand ? attacker.stand.footX - width / 2 : 0
+                y: attacker.stand ? attacker.stand.footY - height * 0.5 : 0
+                width: attacker.stand ? attacker.stand.shadeW * 0.9 : 0
+                height: Math.max(10, width * 0.4)
                 radius: width / 2
                 color: scene.atkSide === 0 ? Board.camp(0).glow : Board.camp(1).glow
-                opacity: 0.7 * scene.pose.ao
+                opacity: (0.5 + 0.22 * Math.abs(Math.sin(scene.phase * 0.16))) * scene.pose.ao
             }
             Rectangle {
                 x: defender.stand ? defender.stand.footX - width / 2 : 0
-                y: defender.stand ? defender.stand.footY - height * 0.45 : 0
-                width: defender.stand ? defender.stand.w * 0.72 : 0
-                height: Math.max(10, width * 0.36)
+                y: defender.stand ? defender.stand.footY - height * 0.32 : 0
+                width: defender.stand ? defender.stand.shadeW * 0.5 * defender.stand.shadow : 0
+                height: Math.max(8, width * 0.28)
+                radius: height / 2
+                color: "#000000"
+                opacity: 0.48 * scene.pose.dop
+            }
+            Rectangle {
+                x: defender.stand ? defender.stand.footX - width / 2 : 0
+                y: defender.stand ? defender.stand.footY - height * 0.5 : 0
+                width: defender.stand ? defender.stand.shadeW * 0.9 : 0
+                height: Math.max(10, width * 0.4)
                 radius: width / 2
                 color: court.defSide === 1 ? Board.camp(1).glow : Board.camp(0).glow
-                opacity: 0.7 * scene.pose.dop
+                opacity: (0.5 + 0.22 * Math.abs(Math.sin(scene.phase * 0.16 + 0.8))) * scene.pose.dop
+            }
+
+            Rectangle {
+                x: attacker.x + attacker.width * 0.12
+                y: attacker.y + attacker.height * 0.05
+                width: attacker.width * 0.76
+                height: attacker.height * 0.9
+                radius: width * 0.48
+                color: scene.atkSide === 0 ? "#3c97ff" : "#9a1219"
+                opacity: (0.14 + 0.08 * Math.sin(scene.phase * 0.12)) * scene.pose.ao
+            }
+            Rectangle {
+                x: defender.x + defender.width * 0.12
+                y: defender.y + defender.height * 0.05
+                width: defender.width * 0.76
+                height: defender.height * 0.9
+                radius: width * 0.48
+                color: court.defSide === 0 ? "#3c97ff" : "#9a1219"
+                opacity: (0.14 + 0.08 * Math.sin(scene.phase * 0.12 + 1)) * scene.pose.dop
+            }
+
+            Repeater {
+                model: 14
+                Rectangle {
+                    required property int index
+                    property bool attackerSide: index < 7
+                    property int camp: attackerSide ? scene.atkSide : court.defSide
+                    property real seed: index * 1.63
+                    property real u: (scene.phase * 0.012 + seed) % 1
+                    width: 3 + (index % 3) * 2
+                    height: width
+                    radius: width / 2
+                    color: camp === 0 ? "#c5dcff" : "#ff8d7a"
+                    opacity: (0.28 + 0.4 * Math.sin(scene.phase * 0.18 + seed)) * (attackerSide ? scene.pose.ao : scene.pose.dop)
+                    x: (attackerSide ? attacker.x : defender.x) + ((index * 41) % 80) / 100 * (attackerSide ? attacker.width : defender.width)
+                    y: (attackerSide ? attacker.y : defender.y) + (1 - u) * (attackerSide ? attacker.height : defender.height) * 0.92
+                }
+            }
+
+            TeamFigure {
+                visible: scene.pose.slash > 0.25 || scene.pose.lance > 0.55 || scene.pose.bolt > 0.35
+                x: attacker.x - attacker.width * 0.08
+                y: attacker.y + attacker.height * 0.015
+                width: attacker.width
+                height: attacker.height
+                source: clash.attackerUrl || ""
+                side: scene.atkSide
+                depth: 0.35
+                opacity: 0.34 * Math.max(scene.pose.slash, scene.pose.lance * 0.85, scene.pose.bolt * 0.65) * scene.pose.ao
             }
 
             TeamFigure {
@@ -272,6 +366,7 @@ Item {
                 height: stand ? stand.h : 1
                 source: clash.attackerUrl || ""
                 side: scene.atkSide
+                depth: 1.08 + (stand ? stand.rise * 2.4 : 0)
                 opacity: scene.pose.ao
                 transformOrigin: Item.Bottom
                 transform: [
@@ -290,6 +385,19 @@ Item {
             }
 
             TeamFigure {
+                visible: scene.pose.dslash > 0.28
+                x: defender.x + defender.width * 0.07
+                y: defender.y
+                width: defender.width
+                height: defender.height
+                source: clash.defenderUrl || ""
+                side: court.defSide
+                mirror: true
+                depth: 0.35
+                opacity: 0.3 * scene.pose.dslash * scene.pose.dop
+            }
+
+            TeamFigure {
                 id: defender
                 property var stand: mesh.view3d
                     ? Board.actorStand(mesh.view3d, scene.pose.dx, scene.pose.dy, scene.defType, court.defSide, 1, 0.88)
@@ -301,6 +409,7 @@ Item {
                 source: clash.defenderUrl || ""
                 side: court.defSide
                 mirror: true
+                depth: 1.08 + (stand ? stand.rise * 2.4 : 0)
                 opacity: scene.pose.dop
                 transformOrigin: Item.Bottom
                 transform: [
@@ -318,22 +427,62 @@ Item {
                 ]
             }
 
-            Rectangle {
+            Item {
                 id: bolt
                 visible: scene.pose.boltOn
                 property real x1: attacker.x + attacker.width * 0.74
-                property real y1: attacker.y + attacker.height * 0.46
+                property real y1: attacker.y + attacker.height * 0.42
                 property real x2: defender.x + defender.width * 0.28
-                property real y2: defender.y + defender.height * 0.46
+                property real y2: defender.y + defender.height * 0.42
+                property real span: Math.max(8, Math.hypot(x2 - x1, y2 - y1)) * Math.max(0.05, scene.pose.bolt)
+                property real ang: Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI
                 x: x1
-                y: y1 - height / 2
-                width: Math.max(8, Math.hypot(x2 - x1, y2 - y1)) * Math.max(0.05, scene.pose.bolt)
-                height: 8
-                radius: 4
-                color: scene.pose.tint
-                opacity: 0.85
-                transformOrigin: Item.Left
-                rotation: Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI
+                y: y1
+                Rectangle {
+                    y: -11
+                    width: bolt.span
+                    height: 22
+                    radius: 11
+                    color: scene.pose.tint
+                    opacity: 0.32
+                    transformOrigin: Item.Left
+                    rotation: bolt.ang
+                }
+                Rectangle {
+                    y: -4
+                    width: bolt.span
+                    height: 8
+                    radius: 4
+                    color: scene.pose.tint
+                    opacity: 0.92
+                    transformOrigin: Item.Left
+                    rotation: bolt.ang
+                }
+                Rectangle {
+                    y: -1.5
+                    width: bolt.span
+                    height: 3
+                    radius: 1
+                    color: "#fffaf2"
+                    transformOrigin: Item.Left
+                    rotation: bolt.ang
+                }
+            }
+
+            Repeater {
+                model: scene.pose.boltOn ? 5 : 0
+                Rectangle {
+                    required property int index
+                    property real along: (index + 1) / 6 * scene.pose.bolt
+                    width: 8 + (index % 2) * 5
+                    height: width
+                    radius: width / 2
+                    color: index % 2 === 0 ? scene.pose.tint : "#fff6ea"
+                    opacity: 0.75
+                    x: bolt.x1 + (bolt.x2 - bolt.x1) * along - width / 2
+                    y: bolt.y1 + (bolt.y2 - bolt.y1) * along - height / 2
+                        + Math.sin(scene.phase * 0.5 + index) * 6
+                }
             }
 
             Rectangle {
@@ -341,15 +490,29 @@ Item {
                 property real x1: bolt.x1
                 property real y1: bolt.y1
                 property real x2: defender.x + defender.width * 0.24
-                property real y2: defender.y + defender.height * 0.46
-                width: 28
-                height: 28
-                radius: 14
+                property real y2: defender.y + defender.height * 0.42
+                width: 36
+                height: 36
+                radius: 18
                 color: scene.pose.tint
+                opacity: 0.45
                 x: x1 + (x2 - x1) * scene.pose.bolt - width / 2
                 y: y1 + (y2 - y1) * scene.pose.bolt - height / 2
-                border.color: "#ffffff"
+            }
+            Rectangle {
+                visible: scene.pose.boltOn
+                property real x1: bolt.x1
+                property real y1: bolt.y1
+                property real x2: defender.x + defender.width * 0.24
+                property real y2: defender.y + defender.height * 0.42
+                width: 16
+                height: 16
+                radius: 8
+                color: "#fffaf2"
+                border.color: scene.pose.tint
                 border.width: 2
+                x: x1 + (x2 - x1) * scene.pose.bolt - width / 2
+                y: y1 + (y2 - y1) * scene.pose.bolt - height / 2
             }
 
             Rectangle {
@@ -365,11 +528,23 @@ Item {
                 width: Math.max(18, Math.hypot(x2 - x1, y2 - y1) * reach)
                 height: 7
                 radius: 2
-                color: "#e7eef8"
-                border.color: "#8aa0bc"
+                color: scene.atkSide === 0 ? "#d7e4f6" : "#f0d2c8"
+                border.color: scene.atkSide === 0 ? "#6e93c4" : "#a84840"
                 border.width: 1
                 transformOrigin: Item.Left
                 rotation: Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI
+            }
+            Rectangle {
+                visible: scene.pose.lance > 0.2
+                x: lance.x
+                y: lance.y1 - height / 2
+                width: lance.width
+                height: 16
+                radius: 8
+                color: scene.atkSide === 0 ? "#8ec2ff" : "#ff5a4a"
+                opacity: 0.28 * scene.pose.lance
+                transformOrigin: Item.Left
+                rotation: lance.rotation
             }
             Rectangle {
                 visible: scene.pose.lance > 0.12
@@ -382,11 +557,21 @@ Item {
             }
             Rectangle {
                 visible: scene.pose.muzzle > 0.08
-                width: 26 + scene.pose.muzzle * 30
+                width: 40 + scene.pose.muzzle * 46
                 height: width
                 radius: width / 2
-                color: "#f2d48a"
-                opacity: scene.pose.muzzle * 0.85
+                color: scene.atkSide === 0 ? "#9ec4ff" : "#ff6a3a"
+                opacity: scene.pose.muzzle * 0.35
+                x: attacker.x + attacker.width * 0.78 - width / 2
+                y: attacker.y + attacker.height * 0.38 - height / 2
+            }
+            Rectangle {
+                visible: scene.pose.muzzle > 0.08
+                width: 18 + scene.pose.muzzle * 22
+                height: width
+                radius: width / 2
+                color: "#fff1c8"
+                opacity: scene.pose.muzzle * 0.9
                 x: attacker.x + attacker.width * 0.78 - width / 2
                 y: attacker.y + attacker.height * 0.38 - height / 2
             }
@@ -448,11 +633,71 @@ Item {
                 visible: scene.pose.dust > 0.05
                 x: defender.stand ? defender.stand.footX - width / 2 : 0
                 y: defender.stand ? defender.stand.footY - height * 0.5 : 0
-                width: (defender.stand ? defender.stand.w : 80) * 1.3 * Math.max(0.4, scene.pose.dust)
+                width: (defender.stand ? defender.stand.shadeW : 80) * 1.35 * Math.max(0.4, scene.pose.dust)
                 height: width * 0.28
                 radius: height / 2
                 color: "#AA9a9aa4"
                 opacity: scene.pose.dust * 0.85
+            }
+            Repeater {
+                model: 3
+                Rectangle {
+                    required property int index
+                    visible: scene.pose.dust > 0.08 && defender.stand
+                    width: defender.stand ? defender.stand.shadeW * (0.55 + index * 0.22) * scene.pose.dust : 0
+                    height: width * 0.3
+                    radius: height / 2
+                    color: index === 1 ? (scene.atkSide === 0 ? "#9ec2ff" : "#ff7a68") : "#c8c4bc"
+                    opacity: scene.pose.dust * (0.45 - index * 0.08)
+                    x: defender.stand ? defender.stand.footX + (index - 1) * width * 0.35 - width / 2 : 0
+                    y: defender.stand ? defender.stand.footY - height * (0.7 + index * 0.35) : 0
+                }
+            }
+
+            Image {
+                visible: scene.pose.flash > 0.05
+                property real boom: 1 - Math.min(1, scene.pose.flash / 0.36)
+                x: defender.x + defender.width * 0.38 - width / 2
+                y: defender.y + defender.height * 0.4 - height / 2
+                width: stage.width * (0.14 + boom * 0.16)
+                height: width
+                source: "qrc:/assets/fx/impact.png"
+                fillMode: Image.PreserveAspectFit
+                smooth: true
+                opacity: Math.min(1, scene.pose.flash * 2.6)
+                rotation: scene.phase * 3
+            }
+            Rectangle {
+                visible: scene.pose.flash > 0.04 && defender.stand
+                property real boom: 1 - Math.min(1, scene.pose.flash / 0.36)
+                width: defender.stand ? defender.stand.shadeW * (0.7 + boom * 2.6) : 0
+                height: width * 0.34
+                radius: width / 2
+                x: defender.stand ? defender.stand.footX - width / 2 : 0
+                y: defender.stand ? defender.stand.footY - height * 0.5 : 0
+                color: "transparent"
+                border.width: 4
+                border.color: scene.pose.tint
+                opacity: (1 - boom) * 0.9
+                antialiasing: true
+            }
+            Repeater {
+                model: 8
+                Rectangle {
+                    required property int index
+                    visible: scene.pose.flash > 0.03
+                    property real boom: 1 - Math.min(1, scene.pose.flash / 0.36)
+                    property real ang: index * 0.785 + 0.25
+                    property real dist: (0.15 + boom) * (defender.stand ? defender.stand.shadeW * 0.9 : 48)
+                    width: 4 + (index % 3) * 3
+                    height: width * (index % 2 ? 2.6 : 1.1)
+                    radius: 2
+                    color: index % 2 === 0 ? scene.pose.tint : "#fff6e4"
+                    opacity: Math.min(1, scene.pose.flash * 3.2) * (1 - boom * 0.35)
+                    x: (defender.x + defender.width * 0.42) + Math.cos(ang) * dist - width / 2
+                    y: (defender.y + defender.height * 0.4) + Math.sin(ang) * dist * 0.62 - height / 2
+                    rotation: ang * 57.3
+                }
             }
         }
     }

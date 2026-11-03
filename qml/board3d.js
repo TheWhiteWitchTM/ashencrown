@@ -322,33 +322,109 @@ function visualOf(sq, flipped) {
     }
 }
 
-function piecePose(view, fromSq, toSq, t, flipped, side, type, selected) {
+function motionOf(type) {
+    if (type === 1) return { hop: 0.52, steps: 2, lean: 8, dust: 0.8, trail: 0.4, weight: 0.7 }
+    if (type === 2) return { hop: 1.08, steps: 1, lean: 16, dust: 0.9, trail: 0.75, weight: 0.35 }
+    if (type === 3) return { hop: 0.64, steps: 1, lean: 9, dust: 0.28, trail: 0.95, weight: 0.28 }
+    if (type === 4) return { hop: 0.26, steps: 1, lean: 4, dust: 1, trail: 0.18, weight: 1 }
+    if (type === 5) return { hop: 0.92, steps: 1, lean: 8, dust: 0.38, trail: 1, weight: 0.22 }
+    if (type === 6) return { hop: 0.46, steps: 1, lean: 5, dust: 0.48, trail: 0.28, weight: 0.78 }
+    return { hop: 0.6, steps: 1, lean: 6, dust: 0.5, trail: 0.4, weight: 0.5 }
+}
+
+function piecePose(view, fromSq, toSq, t, flipped, side, type, selected, breathe) {
     var a = visualOf(fromSq, flipped)
     var b = visualOf(toSq, flipped)
-    var col = a.col + (b.col - a.col) * t
-    var row = a.row + (b.row - a.row) * t
-    var hop = Math.sin(Math.PI * Math.max(0, Math.min(1, t))) * 0.38
-    if (selected) hop += 0.16
+    var travel = Math.max(0, Math.min(1, t))
+    var moving = fromSq !== toSq
+    var profile = motionOf(type)
+    var breatheN = breathe || 0
+    var u = 0
+    var crouch = 0
+    var hopWave = 0
+    if (moving) {
+        if (travel < 0.14) {
+            crouch = Math.sin(travel / 0.14 * Math.PI)
+        } else {
+            var raw = (travel - 0.14) / 0.86
+            u = raw * raw * (3 - 2 * raw)
+            if (profile.steps > 1) {
+                hopWave = Math.abs(Math.sin(Math.PI * u * 2))
+                if (u > 0.5) hopWave *= 0.76
+            } else {
+                hopWave = Math.sin(Math.PI * u)
+            }
+        }
+    }
+    var hop = hopWave * profile.hop
+    if (selected && !moving) hop += 0.2 + 0.12 * breatheN
+    var col = a.col + (b.col - a.col) * (moving ? (travel < 0.14 ? 0 : u) : 0)
+    var row = a.row + (b.row - a.row) * (moving ? (travel < 0.14 ? 0 : u) : 0)
+    var ground = project(view, col + 0.5, 0, row + 0.66)
     var foot = project(view, col + 0.5, hop, row + 0.66)
     var left = project(view, col, hop, row + 0.66)
     var right = project(view, col + 1, hop, row + 0.66)
     var unit = Math.hypot(right.x - left.x, right.y - left.y)
-    var ph = unit * pieceHeight(type)
+    var liftScale = 1 + hop * 0.14
+    var ph = unit * pieceHeight(type) * liftScale
     var pw = ph * pieceAspect(side, type)
     var footPad = 0.034
+    var fileDelta = b.col - a.col
+    var dir = fileDelta === 0 ? 0 : (fileDelta > 0 ? 1 : -1)
+    var lean = 0
+    if (moving && crouch > 0) {
+        lean = (dir === 0 ? -1 : -dir) * profile.lean * 0.45 * crouch
+    } else if (moving) {
+        lean = dir * profile.lean * Math.sin(Math.PI * u)
+        if (type === 3 || type === 5) lean += Math.sin(u * Math.PI * 2) * 5
+        if (type === 2) lean += dir * 7 * (1 - u)
+    } else if (selected) {
+        lean = (breatheN - 0.5) * 6
+    }
+    var squashX = 1
+    var squashY = 1
+    if (crouch > 0) {
+        squashX = 1 + 0.1 * crouch * profile.weight
+        squashY = 1 - 0.14 * crouch * profile.weight
+    } else if (moving && u > 0.9) {
+        var land = Math.sin((u - 0.9) / 0.1 * Math.PI)
+        squashX = 1 + 0.16 * land * (0.4 + profile.weight)
+        squashY = 1 - 0.18 * land * (0.4 + profile.weight)
+    } else if (selected && !moving) {
+        squashX = 1 - 0.025 * breatheN
+        squashY = 1 + 0.045 * breatheN
+    }
+    var dust = 0
+    var trail = 0
+    if (moving) {
+        var nearGround = Math.pow(Math.max(0, 1 - hopWave * 1.25), 2)
+        dust = profile.dust * Math.max(crouch * 0.45, nearGround)
+        if (type === 4) dust = Math.max(dust, profile.dust * 0.55)
+        if (u > 0.92) dust = Math.max(dust, profile.dust)
+        trail = hopWave * profile.trail
+    }
     return {
         x: foot.x - pw / 2,
         y: foot.y - ph * (1 - footPad),
         w: pw,
         h: ph,
-        z: 220 + foot.y,
-        footX: foot.x,
-        footY: foot.y
+        z: 220 + ground.y,
+        footX: ground.x,
+        footY: ground.y,
+        hop: hop,
+        lean: lean,
+        shadow: 1 / (1 + hop * 1.2),
+        dust: dust,
+        trail: trail,
+        squashX: squashX,
+        squashY: squashY
     }
 }
 
 function actorStand(view, frac, hopPx, type, side, scale, depth) {
     // depth 0 stands toward the far rank, depth 1 toward the near rank.
+    // Negative hopPx is a rise. It becomes world height so the figure
+    // grows as it leaves the floor. Positive hopPx stays a screen drop.
     var inset = 0.65
     var x = inset + frac * (view.files - inset * 2)
     var t = depth === undefined || depth === null ? 0.5 : depth
@@ -356,19 +432,31 @@ function actorStand(view, frac, hopPx, type, side, scale, depth) {
     var zNear = view.ranks - 0.7
     if (zNear < zFar + 0.45) zNear = zFar + 0.45
     var z = zFar + (zNear - zFar) * t
-    var foot = project(view, x, 0, z)
-    var left = project(view, x - 0.5, 0, z)
-    var right = project(view, x + 0.5, 0, z)
+    var hop = hopPx || 0
+    var world = Math.max(0, -hop) * 0.02
+    var drop = Math.max(0, hop)
+    var foot = project(view, x, world, z)
+    var ground = project(view, x, 0, z)
+    var left = project(view, x - 0.5, world, z)
+    var right = project(view, x + 0.5, world, z)
     var unit = Math.hypot(right.x - left.x, right.y - left.y)
-    var ph = unit * 2.25 * (scale || 1)
+    var liftScale = 1 + world * 0.3
+    var ph = unit * 2.25 * (scale || 1) * liftScale
     var pw = ph * pieceAspect(side || 0, type || 1)
+    var gLeft = project(view, x - 0.5, 0, z)
+    var gRight = project(view, x + 0.5, 0, z)
+    var gUnit = Math.hypot(gRight.x - gLeft.x, gRight.y - gLeft.y)
+    var shadeW = gUnit * 2.25 * (scale || 1) * pieceAspect(side || 0, type || 1)
     return {
         x: foot.x - pw / 2,
-        y: foot.y - ph * 0.966 + (hopPx || 0),
+        y: foot.y - ph * 0.966 + drop,
         w: pw,
         h: ph,
-        footX: foot.x,
-        footY: foot.y
+        footX: ground.x,
+        footY: ground.y,
+        rise: world,
+        shadow: Math.max(0.36, 1 - world * 0.9),
+        shadeW: shadeW
     }
 }
 
