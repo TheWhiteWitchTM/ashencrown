@@ -8,6 +8,8 @@ Item {
     property real padTop: 0.11
     property real padBottom: 0.035
     property real elev: 48
+    property real yaw: 5
+    property real zoom: 1
 
     property color frontColor: "#1c4c8c"
     property color frontDeep: "#0c2448"
@@ -24,10 +26,16 @@ Item {
     property color lipFront: "#d5e6ff"
     property color lipBack: "#ffd0c4"
     property color lipSide: "#e2c27a"
+    property real frontWash: 0.62
+    property real backWash: 0.66
+    property real plinthFrontWash: 0.74
+    property real plinthBackWash: 0.8
+    property real ledgeWash: 0.72
 
-    readonly property var view3d: Board.makeView(width, height, files, ranks, padTop, padBottom, elev)
+    readonly property var view3d: Board.makeView(width, height, files, ranks, padTop, padBottom, elev, yaw, zoom)
     readonly property var form: view3d ? Board.slab(view3d) : null
     readonly property var shade: view3d ? Board.shadowBox(view3d) : null
+    readonly property var zs: form && form.zs ? form.zs : null
 
     component Face: WarpQuad {
         id: face
@@ -79,13 +87,13 @@ Item {
         z: 0
     }
 
-    Face { z: 1; corners: root.form ? root.form.lowerBack : null; topColor: root.lowerBack; botColor: "#0a0806"; stone: 0.8; wash: 0.8 }
-    Face { z: 1; corners: root.form ? root.form.lowerLeft : null; topColor: root.lowerSide; botColor: "#0a0806"; stone: 0.9; wash: 0.72 }
-    Face { z: 1; corners: root.form ? root.form.lowerRight : null; topColor: root.lowerSide; botColor: "#0a0806"; stone: 0.9; wash: 0.78 }
-    Face { z: 2; corners: root.form ? root.form.lowerFront : null; topColor: root.lowerFront; botColor: "#0a0806"; stone: 0.85; wash: 0.74 }
+    Face { z: root.zs ? root.zs.lowerBack : 1; corners: root.form ? root.form.lowerBack : null; topColor: root.lowerBack; botColor: "#0a0806"; stone: 0.8; wash: root.plinthBackWash }
+    Face { z: root.zs ? root.zs.lowerLeft : 1; corners: root.form ? root.form.lowerLeft : null; topColor: root.lowerSide; botColor: "#0a0806"; stone: 0.9; wash: 0.72 }
+    Face { z: root.zs ? root.zs.lowerRight : 1; corners: root.form ? root.form.lowerRight : null; topColor: root.lowerSide; botColor: "#0a0806"; stone: 0.9; wash: 0.78 }
+    Face { z: root.zs ? root.zs.lowerFront : 2; corners: root.form ? root.form.lowerFront : null; topColor: root.lowerFront; botColor: "#0a0806"; stone: 0.85; wash: root.plinthFrontWash }
 
     WarpQuad {
-        z: 3
+        z: root.zs ? root.zs.lowerTop : 3
         corners: root.form ? root.form.lowerTop : null
         Image {
             anchors.fill: parent
@@ -97,38 +105,38 @@ Item {
         Rectangle {
             anchors.fill: parent
             color: root.lowerTop
-            opacity: 0.72
+            opacity: root.ledgeWash
         }
     }
 
-    Face { z: 4; corners: root.form ? root.form.upperBack : null; topColor: root.backColor; botColor: root.backDeep; stone: 1; wash: 0.66 }
-    Face { z: 4; corners: root.form ? root.form.upperLeft : null; topColor: root.leftColor; botColor: root.leftDeep; stone: 1; wash: 0.58 }
-    Face { z: 4; corners: root.form ? root.form.upperRight : null; topColor: root.rightColor; botColor: root.rightDeep; stone: 1; wash: 0.64 }
-    Face { z: 5; corners: root.form ? root.form.upperFront : null; topColor: root.frontColor; botColor: root.frontDeep; stone: 1; wash: 0.62 }
+    Face { z: root.zs ? root.zs.upperBack : 4; corners: root.form ? root.form.upperBack : null; topColor: root.backColor; botColor: root.backDeep; stone: 1; wash: root.backWash }
+    Face { z: root.zs ? root.zs.upperLeft : 4; corners: root.form ? root.form.upperLeft : null; topColor: root.leftColor; botColor: root.leftDeep; stone: 1; wash: 0.58 }
+    Face { z: root.zs ? root.zs.upperRight : 4; corners: root.form ? root.form.upperRight : null; topColor: root.rightColor; botColor: root.rightDeep; stone: 1; wash: 0.64 }
+    Face { z: root.zs ? root.zs.upperFront : 5; corners: root.form ? root.form.upperFront : null; topColor: root.frontColor; botColor: root.frontDeep; stone: 1; wash: root.frontWash }
 
     WarpQuad {
-        z: 6
+        z: root.zs ? root.zs.backLip : 6
         corners: root.form ? root.form.backLip : null
         Rectangle { anchors.fill: parent; color: root.lipBack }
     }
     WarpQuad {
-        z: 6
+        z: root.zs ? root.zs.leftLip : 6
         corners: root.form ? root.form.leftLip : null
         Rectangle { anchors.fill: parent; color: root.lipSide }
     }
     WarpQuad {
-        z: 6
+        z: root.zs ? root.zs.rightLip : 6
         corners: root.form ? root.form.rightLip : null
         Rectangle { anchors.fill: parent; color: root.lipSide }
     }
     WarpQuad {
-        z: 6
+        z: root.zs ? root.zs.frontLip : 6
         corners: root.form ? root.form.frontLip : null
         Rectangle { anchors.fill: parent; color: root.lipFront }
     }
 
     WarpQuad {
-        z: 7
+        z: root.zs ? root.zs.upperTop : 7
         corners: root.form ? root.form.upperTop : null
         Image {
             anchors.fill: parent

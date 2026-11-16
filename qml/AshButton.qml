@@ -4,10 +4,12 @@ Item {
     id: control
     property string label: ""
     property bool primary: false
+    property int pixelSize: 18
     property string fontFamily: "Liberation Serif"
     signal clicked()
     implicitWidth: 280
     implicitHeight: 52
+    opacity: enabled ? 1 : 0.38
 
     Rectangle {
         anchors.fill: parent
@@ -21,7 +23,7 @@ Item {
             text: control.label
             color: "#f3e6c8"
             font.family: control.fontFamily
-            font.pixelSize: 18
+            font.pixelSize: control.pixelSize
             font.letterSpacing: 1.2
         }
     }

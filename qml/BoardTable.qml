@@ -33,6 +33,32 @@ Item {
     property string coachLine: ""
     property int coachSev: 0
     property int coachSq: -1
+    property bool orbiting: false
+    property bool spun: false
+    property real grabX: 0
+    property real grabY: 0
+
+    readonly property real homeElev: 38
+    readonly property real homeYaw: 5
+    readonly property real homeZoom: 1
+
+    function wrapYaw(deg) {
+        deg = deg % 360
+        if (deg > 180) deg -= 360
+        if (deg < -180) deg += 360
+        return deg
+    }
+
+    function resetCamera() {
+        mesh.yaw = table.homeYaw
+        mesh.elev = table.homeElev
+        mesh.zoom = table.homeZoom
+    }
+
+    function orbitBy(dx, dy) {
+        mesh.yaw = table.wrapYaw(mesh.yaw - dx * 0.42)
+        mesh.elev = Math.max(6, Math.min(85, mesh.elev + dy * 0.28))
+    }
 
     function pieceSource(side, type) {
         if (type < 1) return ""
@@ -149,9 +175,12 @@ Item {
         var view = mesh.view3d
         var rankIndex = alliance ? 0 : 7
         var row = Game.flipped ? rankIndex : (7 - rankIndex)
+        var rim = view.apron !== undefined ? view.apron : view.margin
+        var band = 0.16
+        var gap = 0.08
         if (row === 7)
-            return Board.topQuad(view, 0.12, view.files - 0.12, view.ranks + 0.05, view.ranks + view.margin * 0.62, 0.02)
-        return Board.topQuad(view, 0.12, view.files - 0.12, -view.margin * 0.62, -0.05, 0.02)
+            return Board.topQuad(view, 0.28, view.files - 0.28, view.ranks + rim - band - gap, view.ranks + rim - gap, 0.025)
+        return Board.topQuad(view, 0.28, view.files - 0.28, -rim + gap, -rim + gap + band, 0.025)
     }
 
     Connections {
@@ -256,14 +285,14 @@ Item {
         padTop: 0.12
         padBottom: 0.04
         elev: 38
-        frontColor: table.nearCamp.face
-        frontDeep: table.nearCamp.deep
+        frontColor: table.nearCamp.plate
+        frontDeep: table.nearCamp.plateDeep
         lipFront: table.nearCamp.lip
-        lowerFront: table.nearCamp.base
-        backColor: table.farCamp.face
-        backDeep: table.farCamp.deep
+        lowerFront: "#f1e8da"
+        backColor: table.farCamp.plate
+        backDeep: table.farCamp.plateDeep
         lipBack: table.farCamp.lip
-        lowerBack: table.farCamp.base
+        lowerBack: "#e7ddd0"
         leftColor: "#5a4c3a"
         leftDeep: "#241c16"
         rightColor: "#4a3e30"
@@ -271,22 +300,29 @@ Item {
         lowerSide: "#16120e"
         lowerTop: "#2a231c"
         lipSide: "#e2c27a"
+        frontWash: 0.2
+        backWash: 0.2
+        plinthFrontWash: 0.3
+        plinthBackWash: 0.36
+        ledgeWash: 0.42
     }
 
     WarpQuad {
-        z: 8
+        z: mesh.view3d ? Board.layerZ(mesh.view3d, mesh.view3d.files * 0.5, 0.02, Game.flipped ? 0 : 7, 8) : 8
+        opacity: 0.45
         corners: table.campStrip(true)
         Rectangle {
             anchors.fill: parent
-            color: Board.camp(0).inlay
+            color: Board.camp(0).plate
         }
     }
     WarpQuad {
-        z: 8
+        z: mesh.view3d ? Board.layerZ(mesh.view3d, mesh.view3d.files * 0.5, 0.02, Game.flipped ? 7 : 0, 8) : 8
+        opacity: 0.45
         corners: table.campStrip(false)
         Rectangle {
             anchors.fill: parent
-            color: Board.camp(1).inlay
+            color: Board.camp(1).plate
         }
     }
 
@@ -302,7 +338,7 @@ Item {
             property var piece: Game.squares[index]
             property bool marked: table.isTarget(index)
             property bool showMan: piece && piece.type > 0 && !table.hiddenSq(index)
-            z: 10 + row
+            z: mesh.view3d ? Board.layerZ(mesh.view3d, col + 0.5, 0.03, row + 0.5, 12) : (10 + row)
             corners: mesh.view3d ? Board.tileQuad(mesh.view3d, col, row) : null
 
             Image {
@@ -320,7 +356,7 @@ Item {
             Rectangle {
                 anchors.fill: parent
                 visible: tile.rank === 0 || tile.rank === 7
-                color: tile.rank === 0 ? Board.camp(0).wash : Board.camp(1).wash
+                color: tile.rank === 0 ? Board.camp(0).home : Board.camp(1).home
             }
             Rectangle {
                 width: parent.width
@@ -594,6 +630,8 @@ Item {
             side: walker.side
             outline: Game.figureOutline
             depth: 1.12 + walker.step.hop * 0.95
+            depthX: walker.pose && walker.pose.depthX !== undefined ? walker.pose.depthX : 0.148
+            depthY: walker.pose && walker.pose.depthY !== undefined ? walker.pose.depthY : 0.178
             transform: [
                 Scale {
                     origin.x: walker.width / 2
@@ -661,6 +699,8 @@ Item {
                 side: man.pc ? man.pc.side : 0
                 outline: Game.figureOutline
                 depth: 1.28 + (man.pose ? man.pose.hop * 0.95 : 0)
+                depthX: man.pose && man.pose.depthX !== undefined ? man.pose.depthX : 0.148
+                depthY: man.pose && man.pose.depthY !== undefined ? man.pose.depthY : 0.178
                 transform: [
                     Scale {
                         origin.x: man.width / 2
@@ -727,10 +767,58 @@ Item {
         anchors.fill: parent
         z: 900
         hoverEnabled: true
-        cursorShape: (Game.inputEnabled && table.hoverSq >= 0) ? Qt.PointingHandCursor : Qt.ArrowCursor
-        onPositionChanged: function (mouse) { table.trackGaze(mouse.x, mouse.y) }
-        onExited: table.clearGaze()
+        preventStealing: true
+        acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+        cursorShape: table.orbiting
+                     ? Qt.ClosedHandCursor
+                     : ((Game.inputEnabled && table.hoverSq >= 0) ? Qt.PointingHandCursor : Qt.ArrowCursor)
+        onPressed: function (mouse) {
+            var orbit = mouse.button === Qt.MiddleButton
+                        || (mouse.button === Qt.LeftButton && (mouse.modifiers & Qt.AltModifier))
+            table.spun = false
+            if (orbit) {
+                table.orbiting = true
+                table.grabX = mouse.x
+                table.grabY = mouse.y
+                table.clearGaze()
+                mouse.accepted = true
+            }
+        }
+        onReleased: function (mouse) {
+            table.orbiting = false
+        }
+        onCanceled: table.orbiting = false
+        onPositionChanged: function (mouse) {
+            if (table.orbiting) {
+                var dx = mouse.x - table.grabX
+                var dy = mouse.y - table.grabY
+                if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+                    table.spun = true
+                    table.orbitBy(dx, dy)
+                    table.grabX = mouse.x
+                    table.grabY = mouse.y
+                }
+                return
+            }
+            table.trackGaze(mouse.x, mouse.y)
+        }
+        onWheel: function (wheel) {
+            var steps = wheel.angleDelta.y / 120
+            mesh.zoom = Math.max(0.55, Math.min(2.6, mesh.zoom * Math.pow(1.12, steps)))
+            wheel.accepted = true
+        }
+        onDoubleClicked: function (mouse) {
+            if (mouse.button === Qt.MiddleButton) {
+                table.resetCamera()
+                table.spun = true
+            }
+        }
+        onExited: {
+            if (!table.orbiting) table.clearGaze()
+        }
         onClicked: function (mouse) {
+            if (mouse.button !== Qt.LeftButton || table.spun) return
+            if (mouse.modifiers & Qt.AltModifier) return
             if (!Game.inputEnabled) return
             var boardSq = Board.hit(mesh.view3d, mouse.x, mouse.y, Game.flipped)
             var bodySq = table.pieceAt(mouse.x, mouse.y)

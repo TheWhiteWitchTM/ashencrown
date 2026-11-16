@@ -30,20 +30,26 @@ function camp(side) {
         return {
             face: "#3c97ff",
             deep: "#0b45b8",
-            lip: "#f5f9ff",
+            lip: "#d5dbe4",
             base: "#1e6eef",
             inlay: "#59a6ff",
             wash: "#553c97ff",
+            home: "#1c486890",
+            plate: "#7e8c98",
+            plateDeep: "#3a4654",
             glow: "#8ec2ff"
         }
     }
     return {
         face: "#9a1219",
         deep: "#4c070c",
-        lip: "#ffd4d2",
+        lip: "#e3d0cc",
         base: "#6c0c12",
         inlay: "#c21822",
         wash: "#669a1219",
+        home: "#1c684848",
+        plate: "#8d7a76",
+        plateDeep: "#4a3c3a",
         glow: "#e0454c"
     }
 }
@@ -67,7 +73,7 @@ function pieceAspect(side, type) {
     return row[type] || 0.54
 }
 
-function makeView(vw, vh, files, ranks, padTop, padBot, elevDeg) {
+function makeView(vw, vh, files, ranks, padTop, padBot, elevDeg, yawDeg, zoom) {
     if (vw < 40 || vh < 40) return null
     files = files || 8
     ranks = ranks || 8
@@ -76,11 +82,14 @@ function makeView(vw, vh, files, ranks, padTop, padBot, elevDeg) {
     // Degrees up from the table. Lower is more tilt. The arena stays at 48
     // so the fighters fill the frame. The main board passes 38.
     if (elevDeg === undefined || elevDeg === null) elevDeg = 48
+    if (yawDeg === undefined || yawDeg === null) yawDeg = 5
+    if (zoom === undefined || zoom === null || zoom <= 0) zoom = 1
+    elevDeg = Math.max(5, Math.min(85, elevDeg))
 
     var cx = files * 0.5
     var lookZ = ranks * 0.45
     var elev = elevDeg * Math.PI / 180
-    var yaw = 5 * Math.PI / 180
+    var yaw = yawDeg * Math.PI / 180
     var dist = Math.max(files, ranks) * 2.55 + (ranks <= 4 ? 7.5 : 9.5)
     var horiz = dist * Math.cos(elev)
     var eye = {
@@ -90,30 +99,43 @@ function makeView(vw, vh, files, ranks, padTop, padBot, elevDeg) {
     }
     var look = { x: cx, y: 0.06, z: lookZ }
     var forward = norm(sub(look, eye))
-    var right = norm(cross(forward, { x: 0, y: 1, z: 0 }))
+    var worldUp = { x: 0, y: 1, z: 0 }
+    var right = cross(forward, worldUp)
+    if (dot(right, right) < 1e-8) right = { x: 1, y: 0, z: 0 }
+    right = norm(right)
     var up = norm(cross(right, forward))
 
     var shortBoard = ranks <= 4
     var margin = shortBoard ? 0.32 : Math.min(files, ranks) * 0.05 + 0.32
-    var base = margin + (shortBoard ? 0.2 : 0.28)
+    // The full board wears a marble plate past the squares at both camps.
+    var apron = shortBoard ? margin : margin + 0.34
+    var base = margin + (shortBoard ? 0.2 : 0.3)
+    var baseEnd = shortBoard ? base : apron + 0.28
     var thick = shortBoard ? 0.24 : 0.36
-    var step = shortBoard ? 0.14 : 0.18
+    var step = shortBoard ? 0.14 : 0.2
     var view = {
         eye: eye, forward: forward, right: right, up: up,
         files: files, ranks: ranks,
-        margin: margin, base: base, thick: thick, step: step,
+        margin: margin, apron: apron, base: base, baseEnd: baseEnd,
+        thick: thick, step: step,
+        elevDeg: elevDeg, yawDeg: yawDeg, zoom: zoom,
         scale: 1, ox: 0, oy: 0
     }
 
     var y2 = -(thick + step)
     var W = files
     var D = ranks
+    var a = apron
+    var be = baseEnd
     var sample = [
-        [-base, 0, -base], [W + base, 0, -base],
-        [-margin, 0, -margin], [W + margin, 0, -margin],
-        [W + margin, 0, D + margin], [-margin, 0, D + margin],
-        [-base, y2, -base], [W + base, y2, -base],
-        [W + base, y2, D + base], [-base, y2, D + base]
+        [-base, 0, -be], [W + base, 0, -be],
+        [W + base, 0, D + be], [-base, 0, D + be],
+        [-margin, 0, -a], [W + margin, 0, -a],
+        [W + margin, 0, D + a], [-margin, 0, D + a],
+        [-base, y2, -be], [W + base, y2, -be],
+        [W + base, y2, D + be], [-base, y2, D + be],
+        [cx, 1.55, 0.4], [cx, 1.55, D - 0.4],
+        [0.4, 1.55, lookZ], [W - 0.4, 1.55, lookZ]
     ]
     var minX = 1e9
     var maxX = -1e9
@@ -133,10 +155,54 @@ function makeView(vw, vh, files, ranks, padTop, padBot, elevDeg) {
     var botPx = vh * padBot
     var scale = Math.min((vw - sidePx * 2) / rw, (vh - topPx - botPx) / rh)
     var extra = (vh - topPx - botPx - rh * scale) / 2
-    view.scale = scale
-    view.ox = (vw - rw * scale) / 2 - minX * scale
-    view.oy = topPx + extra + maxY * scale
+    var midX = (minX + maxX) * 0.5
+    var midY = (minY + maxY) * 0.5
+    var cxPx = vw * 0.5
+    var cyPx = topPx + extra + rh * scale * 0.5
+    view.scale = scale * zoom
+    view.ox = cxPx - midX * view.scale
+    view.oy = cyPx + midY * view.scale
     return view
+}
+
+function camDepth(view, wx, wy, wz) {
+    var dx = wx - view.eye.x
+    var dy = wy - view.eye.y
+    var dz = wz - view.eye.z
+    return dx * view.forward.x + dy * view.forward.y + dz * view.forward.z
+}
+
+function screenUnit(view, wx, wy, wz) {
+    var cz = Math.max(0.08, camDepth(view, wx, wy, wz))
+    return view.scale / cz
+}
+
+function layerZ(view, wx, wy, wz, bias) {
+    return 520 - camDepth(view, wx, wy, wz) * 12 + (bias || 0)
+}
+
+function quadArea(q) {
+    if (!q) return 0
+    function tri(a, b, c) {
+        return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+    }
+    return tri(q.tl, q.tr, q.br) + tri(q.tl, q.br, q.bl)
+}
+
+function facingQuad(q) {
+    return Math.abs(quadArea(q)) > 4 ? q : null
+}
+
+function planeShown(view, px, py, pz, nx, ny, nz) {
+    var vx = view.eye.x - px
+    var vy = view.eye.y - py
+    var vz = view.eye.z - pz
+    return vx * nx + vy * ny + vz * nz > -0.12
+}
+
+function shownFace(q, view, px, py, pz, nx, ny, nz) {
+    if (!planeShown(view, px, py, pz, nx, ny, nz)) return null
+    return facingQuad(q)
 }
 
 function projectRaw(view, wx, wy, wz) {
@@ -184,7 +250,9 @@ function vface(view, x, z0, z1, yTop, yBot) {
 
 function slab(view) {
     var m = view.margin
+    var a = view.apron !== undefined ? view.apron : m
     var b = view.base
+    var be = view.baseEnd !== undefined ? view.baseEnd : b
     var th = view.thick
     var st = view.step
     var W = view.files
@@ -192,21 +260,40 @@ function slab(view) {
     var y1 = -th
     var y2 = -(th + st)
     var lip = y1 * 0.16
+    var yLow = (y1 + y2) * 0.5
+    var yMid = y1 * 0.5
+    var yLip = lip * 0.5
     return {
-        lowerTop: topQuad(view, -b, W + b, -b, D + b, y1),
-        upperTop: topQuad(view, -m, W + m, -m, D + m, 0),
-        lowerFront: worldQuad(view, [-b, y1, D + b], [W + b, y1, D + b], [W + b, y2, D + b], [-b, y2, D + b]),
-        upperFront: worldQuad(view, [-m, 0, D + m], [W + m, 0, D + m], [W + m, y1, D + m], [-m, y1, D + m]),
-        lowerBack: worldQuad(view, [-b, y1, -b], [W + b, y1, -b], [W + b, y2, -b], [-b, y2, -b]),
-        upperBack: worldQuad(view, [-m, 0, -m], [W + m, 0, -m], [W + m, y1, -m], [-m, y1, -m]),
-        lowerLeft: vface(view, -b, -b, D + b, y1, y2),
-        upperLeft: vface(view, -m, -m, D + m, 0, y1),
-        lowerRight: vface(view, W + b, -b, D + b, y1, y2),
-        upperRight: vface(view, W + m, -m, D + m, 0, y1),
-        frontLip: worldQuad(view, [-m, 0, D + m], [W + m, 0, D + m], [W + m, lip, D + m], [-m, lip, D + m]),
-        backLip: worldQuad(view, [-m, 0, -m], [W + m, 0, -m], [W + m, lip, -m], [-m, lip, -m]),
-        leftLip: vface(view, -m, -m, D + m, 0, lip),
-        rightLip: vface(view, W + m, -m, D + m, 0, lip)
+        lowerTop: shownFace(topQuad(view, -b, W + b, -be, D + be, y1), view, W * 0.5, y1, D * 0.5, 0, 1, 0),
+        upperTop: shownFace(topQuad(view, -m, W + m, -a, D + a, 0), view, W * 0.5, 0, D * 0.5, 0, 1, 0),
+        lowerFront: shownFace(worldQuad(view, [-b, y1, D + be], [W + b, y1, D + be], [W + b, y2, D + be], [-b, y2, D + be]), view, W * 0.5, yLow, D + be, 0, 0, 1),
+        upperFront: shownFace(worldQuad(view, [-m, 0, D + a], [W + m, 0, D + a], [W + m, y1, D + a], [-m, y1, D + a]), view, W * 0.5, yMid, D + a, 0, 0, 1),
+        lowerBack: shownFace(worldQuad(view, [-b, y1, -be], [W + b, y1, -be], [W + b, y2, -be], [-b, y2, -be]), view, W * 0.5, yLow, -be, 0, 0, -1),
+        upperBack: shownFace(worldQuad(view, [-m, 0, -a], [W + m, 0, -a], [W + m, y1, -a], [-m, y1, -a]), view, W * 0.5, yMid, -a, 0, 0, -1),
+        lowerLeft: shownFace(vface(view, -b, -be, D + be, y1, y2), view, -b, yLow, D * 0.5, -1, 0, 0),
+        upperLeft: shownFace(vface(view, -m, -a, D + a, 0, y1), view, -m, yMid, D * 0.5, -1, 0, 0),
+        lowerRight: shownFace(vface(view, W + b, -be, D + be, y1, y2), view, W + b, yLow, D * 0.5, 1, 0, 0),
+        upperRight: shownFace(vface(view, W + m, -a, D + a, 0, y1), view, W + m, yMid, D * 0.5, 1, 0, 0),
+        frontLip: shownFace(worldQuad(view, [-m, 0, D + a], [W + m, 0, D + a], [W + m, lip, D + a], [-m, lip, D + a]), view, W * 0.5, yLip, D + a, 0, 0, 1),
+        backLip: shownFace(worldQuad(view, [-m, 0, -a], [W + m, 0, -a], [W + m, lip, -a], [-m, lip, -a]), view, W * 0.5, yLip, -a, 0, 0, -1),
+        leftLip: shownFace(vface(view, -m, -a, D + a, 0, lip), view, -m, yLip, D * 0.5, -1, 0, 0),
+        rightLip: shownFace(vface(view, W + m, -a, D + a, 0, lip), view, W + m, yLip, D * 0.5, 1, 0, 0),
+        zs: {
+            lowerTop: layerZ(view, W * 0.5, y1, D * 0.5),
+            upperTop: layerZ(view, W * 0.5, 0, D * 0.5, 4),
+            lowerFront: layerZ(view, W * 0.5, yLow, D + be),
+            upperFront: layerZ(view, W * 0.5, yMid, D + a),
+            lowerBack: layerZ(view, W * 0.5, yLow, -be),
+            upperBack: layerZ(view, W * 0.5, yMid, -a),
+            lowerLeft: layerZ(view, -b, yLow, D * 0.5),
+            upperLeft: layerZ(view, -m, yMid, D * 0.5),
+            lowerRight: layerZ(view, W + b, yLow, D * 0.5),
+            upperRight: layerZ(view, W + m, yMid, D * 0.5),
+            frontLip: layerZ(view, W * 0.5, yLip, D + a, 2),
+            backLip: layerZ(view, W * 0.5, yLip, -a, 2),
+            leftLip: layerZ(view, -m, yLip, D * 0.5, 2),
+            rightLip: layerZ(view, W + m, yLip, D * 0.5, 2)
+        }
     }
 }
 
@@ -278,28 +365,34 @@ function contains(px, py, q) {
 
 function hit(view, sx, sy, flipped) {
     if (!view) return -1
-    for (var row = view.ranks - 1; row >= 0; --row) {
-        for (var col = 0; col < view.files; ++col) {
-            var q = topQuad(view, col, col + 1, row, row + 1, 0)
-            if (!contains(sx, sy, q)) continue
-            var file = flipped ? (view.files - 1 - col) : col
-            var rank = flipped ? row : (view.ranks - 1 - row)
-            return rank * view.files + file
-        }
+    var cells = []
+    for (var row = 0; row < view.ranks; ++row) {
+        for (var col = 0; col < view.files; ++col)
+            cells.push({ col: col, row: row, z: layerZ(view, col + 0.5, 0, row + 0.5) })
+    }
+    cells.sort(function (a, b) { return b.z - a.z })
+    for (var i = 0; i < cells.length; ++i) {
+        var cell = cells[i]
+        var q = topQuad(view, cell.col, cell.col + 1, cell.row, cell.row + 1, 0)
+        if (!contains(sx, sy, q)) continue
+        var file = flipped ? (view.files - 1 - cell.col) : cell.col
+        var rank = flipped ? cell.row : (view.ranks - 1 - cell.row)
+        return rank * view.files + file
     }
     return -1
 }
 
 function shadowBox(view) {
     var b = view.base
+    var be = view.baseEnd !== undefined ? view.baseEnd : b
     var y2 = -(view.thick + view.step)
     var W = view.files
     var D = view.ranks
     var pts = [
-        project(view, -b, y2, -b),
-        project(view, W + b, y2, -b),
-        project(view, W + b, y2, D + b),
-        project(view, -b, y2, D + b)
+        project(view, -b, y2, -be),
+        project(view, W + b, y2, -be),
+        project(view, W + b, y2, D + be),
+        project(view, -b, y2, D + be)
     ]
     var minX = pts[0].x
     var maxX = pts[0].x
@@ -367,12 +460,21 @@ function piecePose(view, fromSq, toSq, t, flipped, side, type, selected, breathe
     var row = a.row + (b.row - a.row) * (moving ? (travel < 0.14 ? 0 : u) : 0)
     var ground = project(view, col + 0.5, 0, row + 0.66)
     var foot = project(view, col + 0.5, hop, row + 0.66)
-    var left = project(view, col, hop, row + 0.66)
-    var right = project(view, col + 1, hop, row + 0.66)
-    var unit = Math.hypot(right.x - left.x, right.y - left.y)
+    var unit = screenUnit(view, col + 0.5, hop, row + 0.66)
     var liftScale = 1 + hop * 0.14
     var ph = unit * pieceHeight(type) * liftScale
     var pw = ph * pieceAspect(side, type)
+    var shade = project(view, col + 0.5 + 0.18, hop - 0.1, row + 0.66 + 0.12)
+    var depthX = pw > 1 ? (shade.x - foot.x) / pw : 0.148
+    var depthY = ph > 1 ? (shade.y - foot.y) / ph : 0.178
+    var depthMag = Math.hypot(depthX, depthY)
+    if (depthMag > 0.34) {
+        depthX *= 0.34 / depthMag
+        depthY *= 0.34 / depthMag
+    } else if (depthMag < 0.07) {
+        depthX = 0.148
+        depthY = 0.178
+    }
     var footPad = 0.034
     var fileDelta = b.col - a.col
     var dir = fileDelta === 0 ? 0 : (fileDelta > 0 ? 1 : -1)
@@ -418,7 +520,7 @@ function piecePose(view, fromSq, toSq, t, flipped, side, type, selected, breathe
         y: foot.y - ph * (1 - footPad),
         w: pw,
         h: ph,
-        z: 220 + ground.y,
+        z: layerZ(view, col + 0.5, hop, row + 0.66, 24),
         footX: ground.x,
         footY: ground.y,
         hop: hop,
@@ -427,7 +529,9 @@ function piecePose(view, fromSq, toSq, t, flipped, side, type, selected, breathe
         dust: dust,
         trail: trail,
         squashX: squashX,
-        squashY: squashY
+        squashY: squashY,
+        depthX: depthX,
+        depthY: depthY
     }
 }
 
@@ -447,21 +551,18 @@ function actorStand(view, frac, hopPx, type, side, scale, depth) {
     var drop = Math.max(0, hop)
     var foot = project(view, x, world, z)
     var ground = project(view, x, 0, z)
-    var left = project(view, x - 0.5, world, z)
-    var right = project(view, x + 0.5, world, z)
-    var unit = Math.hypot(right.x - left.x, right.y - left.y)
+    var unit = screenUnit(view, x, world, z)
     var liftScale = 1 + world * 0.3
     var ph = unit * 2.25 * (scale || 1) * liftScale
     var pw = ph * pieceAspect(side || 0, type || 1)
-    var gLeft = project(view, x - 0.5, 0, z)
-    var gRight = project(view, x + 0.5, 0, z)
-    var gUnit = Math.hypot(gRight.x - gLeft.x, gRight.y - gLeft.y)
+    var gUnit = screenUnit(view, x, 0, z)
     var shadeW = gUnit * 2.25 * (scale || 1) * pieceAspect(side || 0, type || 1)
     return {
         x: foot.x - pw / 2,
         y: foot.y - ph * 0.966 + drop,
         w: pw,
         h: ph,
+        z: layerZ(view, x, world, z, 24),
         footX: ground.x,
         footY: ground.y,
         rise: world,

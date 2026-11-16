@@ -52,6 +52,7 @@ class GameController : public QObject {
     Q_PROPERTY(QString statusLine READ statusLine NOTIFY tick)
     Q_PROPERTY(QString resultText READ resultText NOTIFY tick)
     Q_PROPERTY(QStringList moves READ moves NOTIFY tick)
+    Q_PROPERTY(bool canUndo READ canUndo NOTIFY tick)
     Q_PROPERTY(bool fightActive READ fightActive NOTIFY tick)
     Q_PROPERTY(QVariantMap fight READ fight NOTIFY tick)
     Q_PROPERTY(bool promoActive READ promoActive NOTIFY tick)
@@ -109,6 +110,7 @@ public:
     QString statusLine() const { return statusLine_; }
     QString resultText() const { return resultText_; }
     QStringList moves() const { return moves_; }
+    bool canUndo() const;
     bool fightActive() const { return fightActive_; }
     QVariantMap fight() const { return fight_; }
     bool promoActive() const { return promoActive_; }
@@ -162,6 +164,7 @@ public:
     Q_INVOKABLE void cancelPromo();
     Q_INVOKABLE void fightFinished();
     Q_INVOKABLE void resign();
+    Q_INVOKABLE void takeBack();
     Q_INVOKABLE void offerDraw();
     Q_INVOKABLE void answerDraw(bool accept);
     Q_INVOKABLE void chat(const QString& text);
@@ -204,6 +207,8 @@ private:
     void commitMove(const Move& m);
     void applyLocal(const Move& m, bool tell);
     void finishTurn();
+    int undoPlies() const;
+    void rebuildSpoils();
     void endGame(const QString& text, int winner);
     void beginFight(int attacker, int defender);
     void onMotionDone();
@@ -293,7 +298,13 @@ private:
     QString peerName_;
     QString statusLine_;
     QString resultText_;
+    struct PlayedMove {
+        Move move;
+        int captured = 0;
+    };
+
     QStringList moves_;
+    std::vector<PlayedMove> played_;
     QStringList chatLines_;
     QStringList netLines_;
     QVariantList allianceSpoils_;

@@ -450,6 +450,7 @@ Item {
     }
 
     FightScene {
+        id: titleReel
         anchors.left: menu.right
         anchors.right: parent.right
         anchors.top: parent.top
@@ -458,6 +459,12 @@ Item {
         reel: true
         visible: screen.visible
         fontFamily: screen.fontFamily
+        transform: Scale {
+            origin.x: titleReel.width / 2
+            origin.y: titleReel.height / 2
+            xScale: 1 + titleReel.pose.flash * 0.02
+            yScale: 1 + titleReel.pose.flash * 0.02
+        }
     }
 
     Rectangle {
@@ -467,8 +474,8 @@ Item {
         anchors.bottom: parent.bottom
         anchors.margins: 21
         color: "transparent"
-        border.color: "#88e2b657"
-        border.width: 1
+        border.color: titleReel.pose.flash > 0.15 ? "#fff1c8" : "#88e2b657"
+        border.width: titleReel.pose.flash > 0.15 ? 3 : 1
         enabled: false
     }
 }

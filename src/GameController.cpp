@@ -58,14 +58,6 @@ QString fxFor(const QString& style) {
     return "qrc:/assets/fx/slash.png";
 }
 
-QString soundFor(const QString& style) {
-    if (style == "charge") return "beast";
-    if (style == "siege") return "siege";
-    if (style == "holy") return "holy";
-    if (style == "shadow" || style == "fire") return "magic";
-    return "melee";
-}
-
 int pieceValue(int type) {
     switch (type) {
     case 1: return 1;
@@ -364,7 +356,7 @@ void GameController::saveSettings() const {
 
 void GameController::initAudio() {
     if (qEnvironmentVariableIsSet("ASHENCROWN_NO_AUDIO")) return;
-    const char* names[] = {"click", "move", "melee", "magic", "holy", "beast", "siege",
+    const char* names[] = {"click", "move", "melee", "magic", "holy", "beast", "siege", "whistle",
                            "check", "win", "lose", "hit", "drums", "notify", "sting",
                            "fall_pawn", "fall_knight", "fall_bishop", "fall_rook", "fall_queen", "fall_king"};
     for (const char* name : names) {
@@ -411,7 +403,8 @@ void GameController::setMusicBed(qreal bed) {
 
 void GameController::stopFightSounds() {
     const char* names[] = {"sting", "fall_pawn", "fall_knight", "fall_bishop", "fall_rook",
-                           "fall_queen", "fall_king", "melee", "magic", "holy", "beast", "siege", "hit", "drums"};
+                           "fall_queen", "fall_king", "melee", "magic", "holy", "beast", "siege",
+                           "whistle", "hit", "drums"};
     for (const char* name : names) {
         QSoundEffect* fx = sounds_.value(name, nullptr);
         if (fx) fx->stop();
@@ -693,6 +686,7 @@ void GameController::freshPosition() {
     keys_.clear();
     keys_.push_back(engine_.key());
     moves_.clear();
+    played_.clear();
     chatLines_.clear();
     allianceSpoils_.clear();
     hordeSpoils_.clear();
@@ -806,6 +800,7 @@ void GameController::applyLocal(const Move& m, bool tell) {
     engine_.make(m);
     keys_.push_back(engine_.key());
     moves_ << notation;
+    played_.push_back(PlayedMove{m, captured});
     lastFrom_ = m.from;
     lastTo_ = m.to;
     selected_ = -1;
@@ -868,7 +863,6 @@ void GameController::beginFight(int attacker, int defender) {
     f["bark"] = bark(as, at, ds, dt);
     fight_ = f;
     fightActive_ = true;
-    playSound(soundFor(style));
 }
 
 void GameController::fightFinished() {
@@ -1008,6 +1002,61 @@ void GameController::onAiMove(const Move& incoming) {
         return;
     }
     applyLocal(m, false);
+}
+
+int GameController::undoPlies() const {
+    if (screen_ != 2 || played_.empty()) return 0;
+    if (mode_ == Mode::Hotseat) return 1;
+    if (mode_ != Mode::Ai || mySide_ < 0) return 0;
+    if (engine_.sideToMove() != mySide_) return 1;
+    return played_.size() >= 2 ? 2 : 0;
+}
+
+bool GameController::canUndo() const {
+    return undoPlies() > 0;
+}
+
+void GameController::rebuildSpoils() {
+    allianceSpoils_.clear();
+    hordeSpoils_.clear();
+    for (const PlayedMove& p : played_) {
+        if (!p.captured) continue;
+        if (p.captured < 0) allianceSpoils_ << std::abs(p.captured);
+        else hordeSpoils_ << p.captured;
+    }
+}
+
+void GameController::takeBack() {
+    const int n = undoPlies();
+    if (n <= 0) return;
+    const bool fighting = fightActive_;
+    stopThink();
+    pending_ = {};
+    gliding_ = false;
+    fightActive_ = false;
+    fight_.clear();
+    promoActive_ = false;
+    gameOver_ = false;
+    resultText_.clear();
+    drawOffer_ = false;
+    waiting_ = false;
+    selected_ = -1;
+    if (fighting) stopFightSounds();
+    for (int i = 0; i < n; ++i) {
+        if (played_.empty()) break;
+        engine_.unmake();
+        played_.pop_back();
+        if (!moves_.isEmpty()) moves_.removeLast();
+        if (keys_.size() > 1) keys_.pop_back();
+    }
+    rebuildSpoils();
+    if (!played_.empty()) {
+        lastFrom_ = played_.back().move.from;
+        lastTo_ = played_.back().move.to;
+    } else {
+        lastFrom_ = lastTo_ = -1;
+    }
+    finishTurn();
 }
 
 void GameController::resign() {
@@ -1438,6 +1487,7 @@ void GameController::beginGame(int mySide, const QString& fen) {
     keys_.clear();
     keys_.push_back(engine_.key());
     moves_.clear();
+    played_.clear();
     chatLines_.clear();
     allianceSpoils_.clear();
     hordeSpoils_.clear();
@@ -1898,6 +1948,58 @@ int GameController::coachSelfTest() {
     g.refresh();
     expect(g.hintTier() == 0, "a shared table has no coach");
     expect(!g.coachAt(34).value("show").toBool(), "hotseat stays silent");
+
+    g.screen_ = 2;
+    g.gameOver_ = false;
+    g.fightActive_ = false;
+    g.gliding_ = false;
+    g.thinking_ = false;
+    g.engine_.reset();
+    g.played_.clear();
+    g.moves_.clear();
+    g.keys_.clear();
+    g.keys_.push_back(g.engine_.key());
+    g.allianceSpoils_.clear();
+    g.hordeSpoils_.clear();
+    Move e2;
+    Move e7;
+    expect(g.engine_.pick(12, 28, 0, e2), "e2 is a move");
+    g.engine_.make(e2);
+    g.played_.push_back(PlayedMove{e2, 0});
+    g.moves_ << QStringLiteral("e4");
+    g.keys_.push_back(g.engine_.key());
+    expect(g.canUndo(), "hotseat can take a move back");
+    g.takeBack();
+    expect(g.moves_.isEmpty(), "hotseat undoes one ply");
+    expect(g.engine_.sideToMove() == 0, "alliance to move after the takeback");
+    expect(g.engine_.pieceAt(12) != 0, "e2 pawn restored");
+    expect(!g.canUndo(), "an empty chronicle cannot be undone");
+
+    g.mode_ = Mode::Ai;
+    g.mySide_ = 0;
+    g.screen_ = 2;
+    expect(g.engine_.pick(12, 28, 0, e2), "e2 is a move again");
+    g.engine_.make(e2);
+    g.played_.push_back(PlayedMove{e2, 0});
+    g.moves_ << QStringLiteral("e4");
+    g.keys_.push_back(g.engine_.key());
+    expect(g.engine_.pick(52, 36, 0, e7), "e7 is a move");
+    const int captured = g.engine_.pieceAt(36);
+    g.engine_.make(e7);
+    g.played_.push_back(PlayedMove{e7, captured});
+    g.moves_ << QStringLiteral("e5");
+    g.keys_.push_back(g.engine_.key());
+    g.gameOver_ = true;
+    g.resultText_ = QStringLiteral("test");
+    expect(g.canUndo(), "a finished game can be taken back");
+    g.takeBack();
+    expect(!g.gameOver_, "takeback reopens the game");
+    expect(g.resultText_.isEmpty(), "the result clears");
+    expect(g.engine_.sideToMove() == 0, "alliance moves again");
+    expect(g.moves_.isEmpty(), "both plies leave the chronicle");
+    expect(g.engine_.pieceAt(12) != 0, "e2 pawn is home");
+    expect(g.engine_.pieceAt(52) != 0, "e7 pawn is home");
+    expect(!g.canUndo(), "the opening cannot be undone");
 
     if (failed) {
         std::cerr << failed << " coach test(s) failed\n";

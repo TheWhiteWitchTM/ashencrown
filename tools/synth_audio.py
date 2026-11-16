@@ -113,53 +113,125 @@ def move():
     return mix(step_a, thud, step_b, land)
 
 
-def melee():
-    n = noise(0.28, 7)
-    e = env(len(n), 0.002, 0.05, 0.25, 0.12)
-    ring = tone(620, 0.22, ((1, 0.4), (2.1, 0.25), (3.4, 0.1)), decay=10)
-    return mix([a * b for a, b in zip(n, e)], ring)
-
-
-def magic():
-    n = int(SR * 0.55)
-    out = []
-    for i in range(n):
-        t = i / n
-        f = 280 + 740 * t
-        e = math.sin(math.pi * t) * (1 - t)
-        out.append(math.sin(2 * math.pi * f * i / SR) * e + 0.25 * math.sin(2 * math.pi * f * 1.5 * i / SR) * e)
+def clang(base, dur=0.32, seed=1):
+    # A sword is inharmonic and short. The whoosh leads the metal by a breath.
+    n = int(SR * dur)
+    partials = (1.0, 2.27, 3.52, 4.9, 6.41, 8.2)
+    amps = (1.0, 0.52, 0.3, 0.16, 0.09, 0.05)
+    out = [0.0] * n
+    lead = int(SR * 0.016)
+    for i in range(n - lead):
+        t = i / SR
+        s = 0.0
+        for h, a in zip(partials, amps):
+            s += a * math.sin(2 * math.pi * base * h * t) * math.exp(-(6.5 + h * 2.4) * t)
+        out[i + lead] += s
+    whoosh = highpass(noise(0.05, seed), 0.82)
+    we = env(len(whoosh), 0.003, 0.018, 0.04, 0.012)
+    for i, s in enumerate(whoosh):
+        if i < n:
+            out[i] += s * we[i] * 0.65
+    crack = _crack(0.018, seed)
+    for i, s in enumerate(crack):
+        j = i + lead
+        if j < n:
+            out[j] += s * 0.4
     return out
 
 
+def melee():
+    return mix(clang(980, 0.32, 7), [s * 0.32 for s in clang(1540, 0.2, 8)])
+
+
+def magic():
+    dur = 0.68
+    n = int(SR * dur)
+    out = []
+    phase = 0.0
+    for i in range(n):
+        t = i / SR
+        f = 220 + 1100 * (t ** 0.65)
+        phase += f / SR
+        e = math.sin(math.pi * min(1, t / dur)) ** 0.75
+        s = math.sin(2 * math.pi * phase)
+        s += 0.4 * math.sin(2 * math.pi * phase * 2.01)
+        s += 0.18 * math.sin(2 * math.pi * phase * 3.47)
+        out.append(s * e)
+    spark = highpass(noise(dur, 24), 0.96)
+    se = [math.sin(math.pi * min(1, i / max(1, len(spark)))) ** 2 for i in range(len(spark))]
+    return mix(out, [a * b * 0.28 for a, b in zip(spark, se)], [s * 0.45 for s in _crack(0.025, 25)])
+
+
 def holy():
-    notes = [523.25, 659.25, 783.99]
+    notes = [523.25, 659.25, 783.99, 1046.5]
     tracks = []
     for i, f in enumerate(notes):
-        tracks.append(pad(tone(f, 0.7, ((1, 1), (2, 0.15), (3, 0.08)), decay=2.2), 0.9))
-        # stagger
-        tracks[-1] = silence(i * 0.03) + tracks[-1]
-    return mix(*tracks)
+        note = tone(f, 0.82, ((1, 1), (2, 0.2), (3, 0.07), (4.02, 0.035)), decay=2.3)
+        tracks.append(silence(i * 0.04) + note)
+    n = int(SR * 0.75)
+    shimmer = []
+    phase = 0.0
+    for i in range(n):
+        t = i / SR
+        phase += (980 + 520 * t) / SR
+        e = math.sin(math.pi * min(1, t / 0.75)) ** 1.1
+        shimmer.append(0.22 * math.sin(2 * math.pi * phase) * e)
+    return mix(*tracks, shimmer, _crack(0.02, 26))
 
 
 def beast():
-    n = int(SR * 0.45)
-    rng = random.Random(9)
-    raw = []
-    y = 0
+    n = int(SR * 0.72)
+    out = []
+    phase = 0.0
     for i in range(n):
-        y += 0.08 * (rng.uniform(-1, 1) - y)
         t = i / SR
-        growl = math.sin(2 * math.pi * (70 + 20 * math.sin(2 * math.pi * 8 * t)) * t)
-        e = math.sin(math.pi * min(1, t / 0.45)) ** 0.6
-        raw.append((growl * 0.8 + y) * e)
-    return raw
+        envp = math.sin(math.pi * min(1.0, t / 0.64)) ** 0.5
+        f = 360 + 520 * (math.sin(math.pi * min(1.0, t / 0.52)) ** 1.05)
+        f *= 1.0 + 0.035 * math.sin(2 * math.pi * 13 * t)
+        phase += f / SR
+        trem = 0.3 + 0.7 * (0.5 + 0.5 * math.sin(2 * math.pi * (15 + 8 * t) * t))
+        s = math.sin(2 * math.pi * phase)
+        s += 0.5 * math.sin(2 * math.pi * phase * 2)
+        s += 0.18 * math.sin(2 * math.pi * phase * 3.02)
+        out.append(s * trem * envp)
+    snort = highpass(noise(0.12, 9), 0.72)
+    se = env(len(snort), 0.004, 0.04, 0.08, 0.04)
+    return mix(out, silence(0.5) + [a * b * 0.5 for a, b in zip(snort, se)])
 
 
 def siege():
-    boom = tone(55, 0.55, ((1, 1), (2, 0.4), (3, 0.2)), decay=4)
-    n = lowpass(noise(0.4, 11), 0.08)
-    e = env(len(n), 0.001, 0.08, 0.3, 0.2)
-    return mix(boom, [a * b for a, b in zip(n, e)])
+    boom = _kick(46, 0.62, 190)
+    sub = _kick(34, 0.48, 70)
+    air_n = lowpass(noise(0.32, 11), 0.14)
+    air_e = env(len(air_n), 0.001, 0.03, 0.15, 0.18)
+    snap = highpass(noise(0.07, 22), 0.94)
+    snap_e = env(len(snap), 0.0008, 0.012, 0.04, 0.03)
+    return mix(
+        [s * 1.15 for s in boom],
+        [s * 0.4 for s in sub],
+        _crack(0.03, 21),
+        [a * b * 0.45 for a, b in zip(air_n, air_e)],
+        [a * b * 0.7 for a, b in zip(snap, snap_e)],
+    )
+
+
+def whistle():
+    # The shell in the air. A short fall, not a siren: it swells and is gone.
+    dur = 1.05
+    n = int(SR * dur)
+    out = []
+    phase = 0.0
+    for i in range(n):
+        t = i / SR
+        f = 1500 * math.exp(-1.35 * t) + 420
+        phase += f / SR
+        trem = 0.72 + 0.28 * math.sin(2 * math.pi * 23 * t)
+        e = math.sin(math.pi * min(1.0, t / dur)) ** 0.55
+        s = math.sin(2 * math.pi * phase)
+        s += 0.18 * math.sin(2 * math.pi * phase * 2.01)
+        out.append(s * trem * e)
+    breath = highpass(noise(dur, 23), 0.97)
+    return [a * 0.88 + b * 0.07 for a, b in zip(out, breath)]
 
 
 def check():
@@ -177,13 +249,12 @@ def fanfare(up=True):
 
 
 def hit():
-    # The killing blow: a crack, then a metal ring that hangs in the quiet.
-    n = noise(0.16, 13)
-    e = env(len(n), 0.001, 0.02, 0.08, 0.08)
-    crack = [a * b for a, b in zip(n, e)]
-    ring = tone(740, 0.55, ((1, 0.45), (2.01, 0.28), (3.2, 0.12), (4.7, 0.05)), decay=6)
-    body = tone(86, 0.28, ((1, 1), (2, 0.35)), decay=11)
-    return mix(crack, [s * 0.7 for s in ring], body)
+    # The killing blow: crack, body, and a short ring. Not a voice.
+    return mix(
+        [s * 0.85 for s in _crack(0.04, 13)],
+        [s * 0.9 for s in _kick(68, 0.32, 170)],
+        [s * 0.5 for s in clang(860, 0.36, 4)],
+    )
 
 
 def _swell(n, attack, hold):
@@ -263,68 +334,184 @@ def _chord(freqs, dur, decay, harm=((1, 1), (2, 0.22), (3, 0.08))):
     return mix(*[tone(f, dur, harm, decay) for f in freqs])
 
 
-def _quiet_kick(freq, dur, drop):
-    return [s * 0.38 for s in _kick(freq, dur, drop)]
+def _resonator(samples, freq, bw):
+    r = math.exp(-math.pi * bw / SR)
+    theta = 2 * math.pi * freq / SR
+    a1 = -2.0 * r * math.cos(theta)
+    a2 = r * r
+    y1 = 0.0
+    y2 = 0.0
+    out = []
+    for x in samples:
+        y = x - a1 * y1 - a2 * y2
+        y2 = y1
+        y1 = y
+        out.append(y)
+    return out
+
+
+def _glottal(dur, f0_fn, seed):
+    n = int(SR * dur)
+    rng = random.Random(seed)
+    out = [0.0] * n
+    phase = 0.0
+    for i in range(n):
+        t = i / SR
+        f0 = f0_fn(t)
+        f0 *= 1.0 + 0.012 * math.sin(2 * math.pi * 5.2 * t)
+        f0 += (rng.random() - 0.5) * 1.4
+        f0 = max(75.0, min(480.0, f0))
+        phase += f0 / SR
+        if phase >= 1.0:
+            phase -= 1.0
+        if phase < 0.40:
+            g = 0.5 * (1.0 - math.cos(math.pi * phase / 0.40))
+        elif phase < 0.52:
+            g = max(0.0, math.cos(0.5 * math.pi * (phase - 0.40) / 0.12))
+        else:
+            g = 0.0
+        out[i] = g
+    return out
+
+
+_SHAPES = {
+    "ah": ((730, 90, 1.0), (1120, 110, 0.42), (2450, 160, 0.16)),
+    "aw": ((600, 80, 1.0), (1040, 100, 0.38), (2300, 150, 0.12)),
+    "oh": ((490, 70, 1.0), (860, 90, 0.36), (2300, 150, 0.1)),
+    "uh": ((440, 80, 1.0), (1080, 110, 0.3), (2200, 160, 0.08)),
+    "eh": ((560, 80, 0.65), (1760, 120, 0.5), (2500, 150, 0.14)),
+}
+
+
+def _unit(samples, peak=1.0):
+    m = max(1e-8, max(abs(s) for s in samples))
+    return [s * peak / m for s in samples]
+
+
+def yell(dur, f0_fn, shape, seed, attack=0.016, decay=0.24):
+    # A short voiced cry. Pitch may fall inside the shout. It does not siren.
+    excit = _glottal(dur, f0_fn, seed)
+    breath = highpass(noise(dur, seed + 19), 0.9)
+    excit = [a + b * 0.05 for a, b in zip(excit, breath)]
+    parts = []
+    for freq, bw, amp in _SHAPES[shape]:
+        parts.append([s * amp for s in _resonator(excit, freq, bw)])
+    voice = lowpass(mix(*parts), 0.38)
+    out = []
+    for i, s in enumerate(voice):
+        t = i / SR
+        if t < attack:
+            e = (t / attack) ** 0.5 if attack else 1
+        else:
+            e = math.exp(-(t - attack) / decay)
+        out.append(math.tanh(s * e * 2.2))
+    return _unit(out, 1.0)
 
 
 def fall_pawn():
-    cry = mix(
-        tone(220, 0.18, ((1, 1), (2, 0.2), (3, 0.08)), decay=14),
-        tone(330, 0.14, ((1, 0.7),), decay=16),
+    def f0(t):
+        if t < 0.045:
+            return 165 + 190 * (t / 0.045)
+        return 130 + 210 * math.exp(-3.4 * (t - 0.045))
+
+    def f0b(t):
+        return 115 + 55 * math.exp(-4.5 * t)
+
+    voice = yell(0.7, f0, "ah", 3, attack=0.01, decay=0.2)
+    grunt = silence(0.24) + yell(0.32, f0b, "uh", 5, attack=0.008, decay=0.12)
+    return mix(
+        voice,
+        [s * 0.5 for s in grunt],
+        [s * 0.62 for s in clang(1180, 0.26, 31)],
+        silence(0.3) + _kick(82, 0.3, 150),
+        silence(0.32) + [s * 0.28 for s in clang(1720, 0.14, 32)],
     )
-    steel = tone(1568, 0.28, ((1, 1), (2.4, 0.35), (3.6, 0.12)), decay=11)
-    return mix(_crack(0.05, 31), _cymbal(0.35, 51, 11), cry, steel, silence(0.02) + _quiet_kick(96, 0.4, 160))
 
 
 def fall_knight():
-    brass = _chord((146.83, 220.0, 293.66, 440.0), 0.9, 2.6, ((1, 1), (2, 0.35), (3, 0.14)))
-    n = int(SR * 0.36)
-    neigh = []
-    for i in range(n):
-        t = i / SR
-        trem = 0.45 + 0.55 * math.sin(2 * math.pi * 14 * t)
-        e = math.exp(-4.4 * t)
-        s = math.sin(2 * math.pi * 740 * t) + 0.7 * math.sin(2 * math.pi * 988 * t)
-        neigh.append(s * trem * e)
-    return mix(_crack(0.06, 32), _cymbal(0.4, 52, 9), brass, neigh, _quiet_kick(78, 0.48, 130))
+    def f0(t):
+        if t < 0.04:
+            return 190 + 90 * (t / 0.04)
+        return 145 + 130 * math.exp(-2.8 * (t - 0.04))
+
+    voice = silence(0.16) + yell(0.58, f0, "ah", 7, attack=0.012, decay=0.18)
+    return mix(
+        [s * 0.85 for s in beast()],
+        [s * 0.8 for s in voice],
+        _kick(62, 0.38, 150),
+        [s * 0.4 for s in clang(640, 0.4, 33)],
+    )
 
 
 def fall_bishop():
+    def f0(t):
+        return 205 + 28 * math.sin(2 * math.pi * 3.2 * t)
+
+    voice = yell(0.85, f0, "oh", 8, attack=0.035, decay=0.32)
     bells = []
-    for i, f in enumerate((1174.0, 880.0, 659.25, 523.25)):
-        note = tone(f, 1.4, ((1, 1), (2.37, 0.2), (3.9, 0.06)), decay=1.6)
-        bells.append(silence(i * 0.07) + note)
-    bed = _chord((196.0, 311.13, 392.0), 1.4, 1.6)
-    return mix(_crack(0.045, 33), _cymbal(0.5, 53, 8), *bells, [s * 0.45 for s in bed], silence(0.04) + _quiet_kick(88, 0.42, 90))
+    for i, f in enumerate((1568.0, 1174.0, 880.0, 659.25)):
+        note = tone(f, 1.05, ((1, 1), (2.4, 0.14), (3.8, 0.04)), decay=2.1)
+        bells.append(silence(0.1 + i * 0.06) + note)
+    spark = highpass(noise(0.7, 40), 0.985)
+    se = _swell(len(spark), 0.08, 0.4)
+    return mix(
+        [s * 0.7 for s in voice],
+        *[[s * 0.32 for s in b] for b in bells],
+        [a * b * 0.22 for a, b in zip(spark, se)],
+    )
 
 
 def fall_rook():
-    knocks = []
-    for i, f in enumerate((210, 168, 250, 140)):
-        knocks.append(silence(i * 0.06) + tone(f, 0.16, ((1, 1), (2.2, 0.4), (3.5, 0.15)), decay=18))
-    cracks = [silence(i * 0.055) + _crack(0.04, 40 + i) for i in range(4)]
-    return mix(*cracks, *knocks, _cymbal(0.28, 54, 14), _quiet_kick(64, 0.55, 100), silence(0.08) + _quiet_kick(52, 0.6, 70))
+    def f0(t):
+        return 108 + 36 * math.exp(-3.2 * t)
+
+    bark = yell(0.38, f0, "aw", 9, attack=0.008, decay=0.11)
+    rubble = []
+    for i, f in enumerate((190, 142, 220, 96, 68)):
+        rubble.append(silence(0.06 + i * 0.055) + tone(f, 0.18, ((1, 1), (2.3, 0.35), (3.6, 0.12)), decay=16))
+    cracks = [silence(i * 0.06) + _crack(0.03, 40 + i) for i in range(5)]
+    return mix(
+        [s * 0.9 for s in bark],
+        [s * 0.85 for s in _unit(_kick(40, 0.85, 130))],
+        *[ [s * 0.45 for s in c] for c in cracks ],
+        *[[s * 0.5 for s in r] for r in rubble],
+    )
 
 
 def fall_queen():
-    # The chord stays on its pitches. A long downward glide is the other bad sound.
-    stab = _chord((220.0, 261.63, 329.63, 440.0, 659.25), 1.5, 1.5, ((1, 1), (2, 0.28), (3, 0.1), (4, 0.04)))
-    shimmer = tone(1568, 0.7, ((1, 1), (2.01, 0.25)), decay=4.5)
-    return mix(_crack(0.05, 35), _cymbal(0.55, 55, 6), stab, shimmer, silence(0.03) + _quiet_kick(82, 0.5, 120))
+    def f0(t):
+        if t < 0.07:
+            return 230 + 150 * (t / 0.07)
+        return 210 + 160 * math.exp(-1.7 * (t - 0.07))
+
+    def f0b(t):
+        return 300 + 36 * math.sin(2 * math.pi * 5.5 * t)
+
+    voice = yell(0.9, f0, "eh", 11, attack=0.018, decay=0.3)
+    high = silence(0.2) + yell(0.62, f0b, "ah", 12, attack=0.025, decay=0.26)
+    shimmer = tone(1680, 0.85, ((1, 1), (2.01, 0.28)), decay=3.4)
+    low = _chord((196.0, 246.94, 293.66), 1.15, 1.5)
+    return mix(voice, [s * 0.5 for s in high], [s * 0.26 for s in shimmer], [s * 0.32 for s in low])
 
 
 def fall_king():
-    low = _chord((130.81, 196.0, 261.63, 329.63), 1.7, 1.35, ((1, 1), (2, 0.32), (3, 0.12)))
-    sw = _swell(len(low), 0.05, 1.2)
+    def f0(t):
+        if t < 0.5:
+            return 122 + 7 * math.sin(2 * math.pi * 4.2 * t)
+        return 122 - 36 * min(1.0, (t - 0.5) / 0.22)
+
+    voice = silence(0.06) + yell(0.78, f0, "oh", 13, attack=0.028, decay=0.34)
+    low = _chord((110.0, 164.81, 220.0), 1.45, 1.35)
+    sw = _swell(len(low), 0.06, 1.05)
     low = [a * b for a, b in zip(low, sw)]
-    brass = _chord((196.0, 246.94, 293.66, 392.0), 1.15, 1.8, ((1, 1), (2, 0.3), (3, 0.1)))
+    brass = _chord((196.0, 246.94, 293.66, 392.0), 1.05, 1.7)
     return mix(
-        _crack(0.07, 36),
-        _cymbal(0.7, 56, 5),
-        low,
-        brass,
-        _quiet_kick(70, 0.45, 90),
-        silence(0.32) + _quiet_kick(58, 0.6, 70),
+        voice,
+        [s * 0.28 for s in _unit(low)],
+        [s * 0.26 for s in _unit(brass)],
+        silence(0.42) + [s * 0.22 for s in _unit(clang(1980, 0.2, 14))],
+        silence(0.48) + [s * 0.4 for s in _unit(_kick(56, 0.42, 100))],
+        [s * 0.18 for s in _unit(_cymbal(0.55, 56, 6))],
     )
 
 
@@ -393,6 +580,7 @@ def main():
     write_wav("holy.wav", holy(), 0.75)
     write_wav("beast.wav", beast(), 0.85)
     write_wav("siege.wav", siege(), 0.9)
+    write_wav("whistle.wav", whistle(), 0.72)
     write_wav("check.wav", check(), 0.8)
     write_wav("win.wav", fanfare(True), 0.8)
     write_wav("lose.wav", fanfare(False), 0.75)

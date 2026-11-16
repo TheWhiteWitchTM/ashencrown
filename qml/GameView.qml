@@ -143,7 +143,27 @@ Item {
                     }
                 }
 
-                Text { text: "Chronicle"; color: "#e2b657"; font.family: view.fontFamily; font.pixelSize: 14 }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Text {
+                        text: "Chronicle"
+                        color: "#e2b657"
+                        font.family: view.fontFamily
+                        font.pixelSize: 14
+                        Layout.fillWidth: true
+                    }
+                    AshButton {
+                        visible: Game.mode === "ai" || Game.mode === "hotseat"
+                        label: "Undo"
+                        enabled: Game.canUndo
+                        fontFamily: view.fontFamily
+                        pixelSize: 14
+                        implicitWidth: 84
+                        implicitHeight: 30
+                        onClicked: Game.takeBack()
+                    }
+                }
                 ListView {
                     id: chronicle
                     Layout.fillWidth: true
